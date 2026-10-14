@@ -1,0 +1,52 @@
+name: live-smoke
+
+# Живий агент у режимі paper кілька хвилин на справжніх цінах Binance (публічні дані).
+# Встановлення — лише ядро (pyyaml), як у Termux на телефоні.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Скільки хвилин працювати"
+        required: false
+        default: "3"
+  push:
+    branches: [main]
+    paths: ["agent/live/**", "agent/strategy/**", "agent/risk/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Перевірка, що важких залежностей немає
+        run: python -c "import importlib.util as u; assert not u.find_spec('pandas'), 'pandas не має бути'"
+      - name: Paper-агент
+        env:
+          MINUTES: ${{ inputs.minutes || '3' }}
+        run: |
+          case "$MINUTES" in ''|*[!0-9]*) MINUTES=3;; esac
+          eth-agent live --mode paper --config config.example.yaml --home ./smoke --minutes "$MINUTES"
+      - name: Підсумок
+        run: |
+          python - <<'PY'
+          import json, sqlite3
+          db = sqlite3.connect("smoke/journal_paper.sqlite")
+          ev = db.execute("select level, kind, msg from events order by rowid").fetchall()
+          bad = [e for e in ev if e[0] == "ERROR"]
+          state = json.load(open("smoke/state_paper.json"))
+          phases = [b["phase"] for b in state["bots"]]
+          msg = f"подій {len(ev)}, помилок {len(bad)}, фази ботів {phases}"
+          print("::notice title=Paper smoke::" + msg + "%0A" + "%0A".join(f"{l} {k}: {m}" for l, k, m in ev[-15:]))
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Paper smoke\n\n" + msg + "\n\n" + "\n".join(f"- {l} {k}: {m}" for l, k, m in ev[-30:]) + "\n")
+          assert not bad, bad
+          PY

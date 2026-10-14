@@ -1,0 +1,97 @@
+"""Конфіг для живого агента без pydantic. Ті самі секції й типові значення, що й agent/config.py
+(тест test_live_settings_match_research_config стежить, щоб вони не розійшлись)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, fields
+from decimal import Decimal
+from pathlib import Path
+
+import yaml
+
+from agent.features.params import FeatureParams
+from agent.money import D
+from agent.risk.guard import RiskParams
+from agent.strategy.v3 import AtrPoint, V3Params
+
+V3_DEFAULTS = {
+    "bots": 5, "interval_atr": "1.0", "budget_usdt_per_bot": "100",
+    "buy": {"limit_up": "1.0", "limit_bot": "-1.0", "action_up": "0.4", "action_bot": "0.1"},
+    "sell": {"limit_up": "2.0", "limit_bot": "-1.0", "action_up": "0.5", "action_bot": "-0.4"},
+    "min_edge_pct": "0.15", "fee_pct": "0.1", "k_stop_atr": "2", "max_hold_h": 72,
+    "risk_per_trade_pct": "0.5",
+    "filters": {"trend_block_pct": "-3", "atr_min_pct": "0.3", "atr_max_pct": "4.0"},
+}
+FEATURE_DEFAULTS = {"atr_tf": "1d", "atr_len": 14, "ema_len": 200, "ema_slope_h": 24, "anchor_h": 24}
+
+
+@dataclass(frozen=True)
+class LiveSettings:
+    pair: str
+    mode: str
+    v3: V3Params
+    risk: RiskParams
+    features: FeatureParams
+    poll_s: int = 10
+    features_every_s: int = 60
+    reconcile_every_s: int = 300
+    stop_limit_buffer_pct: Decimal = D("1.0")   # ліміт стоп-ордера нижче стоп-ціни на 1 %
+    status_port: int = 8765
+
+
+def _merge(base: dict, over: dict | None) -> dict:
+    out = dict(base)
+    for k, v in (over or {}).items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def _dec_or_none(x):
+    return None if x is None else D(x)
+
+
+def v3_params(raw: dict, qty_step: Decimal = D("0.0001"), min_notional: Decimal = D("5")) -> V3Params:
+    c = _merge(V3_DEFAULTS, raw)
+    pt = lambda d: AtrPoint(D(d["limit_up"]), D(d["limit_bot"]), D(d["action_up"]), D(d["action_bot"]))
+    f = c["filters"]
+    return V3Params(
+        bots=int(c["bots"]), interval_atr=D(c["interval_atr"]), budget_usdt=D(c["budget_usdt_per_bot"]),
+        buy=pt(c["buy"]), sell=pt(c["sell"]), min_edge_pct=D(c["min_edge_pct"]), fee_pct=D(c["fee_pct"]),
+        k_stop_atr=D(c["k_stop_atr"]), max_hold_h=int(c["max_hold_h"]),
+        risk_per_trade_pct=D(c["risk_per_trade_pct"]), qty_step=qty_step, min_notional=min_notional,
+        trend_block_pct=_dec_or_none(f.get("trend_block_pct")), atr_min_pct=_dec_or_none(f.get("atr_min_pct")),
+        atr_max_pct=_dec_or_none(f.get("atr_max_pct")),
+    )
+
+
+def risk_params(raw: dict | None) -> RiskParams:
+    kw = {}
+    for fld in fields(RiskParams):
+        if raw and fld.name in raw:
+            v = raw[fld.name]
+            kw[fld.name] = int(v) if fld.type in ("int", int) else D(v)
+    return RiskParams(**kw)
+
+
+def feature_params(raw: dict | None) -> FeatureParams:
+    c = _merge(FEATURE_DEFAULTS, raw)
+    return FeatureParams(atr_tf=str(c["atr_tf"]), atr_len=int(c["atr_len"]), ema_len=int(c["ema_len"]),
+                         ema_slope_h=int(c["ema_slope_h"]), anchor_h=int(c["anchor_h"]))
+
+
+def load(path: Path, mode: str | None = None) -> LiveSettings:
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    agent = raw.get("agent", {})
+    live = raw.get("live", {})
+    return LiveSettings(
+        pair=agent.get("pair", "ETHUSDT"),
+        mode=mode or agent.get("mode", "paper"),
+        v3=v3_params(raw.get("v3")),
+        risk=risk_params(raw.get("risk")),
+        features=feature_params(raw.get("features")),
+        poll_s=int(live.get("poll_s", 10)),
+        features_every_s=int(live.get("features_every_s", 60)),
+        reconcile_every_s=int(live.get("reconcile_every_s", 300)),
+        stop_limit_buffer_pct=D(live.get("stop_limit_buffer_pct", "1.0")),
+        status_port=int(live.get("status_port", 8765)),
+    )

@@ -7,15 +7,14 @@ name = "eth-agent"
 version = "0.1.0"
 description = "ETH-Агент: спотовий агент ETHUSDT на логіці «точок дії» CryptoBot v2.02"
 requires-python = ">=3.12"
+# Ядро (живий агент) — лише pyyaml, щоб ставилось у Termux на Android без компіляції.
 dependencies = [
-  "pydantic>=2.6",
   "pyyaml>=6.0",
-  "pandas>=2.2",
-  "pyarrow>=15",
-  "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
+# Бектест, walk-forward, завантаження історії
+research = ["pydantic>=2.6", "pandas>=2.2", "pyarrow>=15", "httpx>=0.27", "numpy>=1.26"]
 dev = ["pytest>=8"]
 
 [project.scripts]

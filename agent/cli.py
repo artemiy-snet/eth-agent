@@ -92,6 +92,36 @@ def _cmd_walkforward(a) -> int:
     return 0
 
 
+def _cmd_live(a) -> int:
+    from agent.live import runner, settings
+    from agent.live.status_server import serve
+
+    cfg = Path(a.config)
+    if not cfg.exists():
+        cfg = Path(__file__).resolve().parent.parent / "config.example.yaml"
+    s = settings.load(cfg, mode=a.mode)
+    home = Path(a.home).expanduser()
+    if a.telegram_setup:
+        from agent.live.notify import chat_ids
+        sec = runner.read_secrets(home)
+        for cid, name in chat_ids(sec.get("TELEGRAM_TOKEN", "")):
+            print(f"TELEGRAM_CHAT_ID={cid}   ({name})")
+        return 0
+    try:
+        agent = runner.build(s, home)
+    except runner.LiveDisabled as e:
+        print(e)
+        return 2
+    if a.clear_kill:
+        agent.clear_kill()
+        print("Kill switch знято. Запусти агента знову.")
+        return 0
+    serve(agent, s.status_port)
+    print(f"Сторінка статусу: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")
+    agent.run(stop_after_s=a.minutes * 60 if a.minutes else None)
+    return 0
+
+
 LABELS = {
     "period": "Період", "grid_base": "База сітки", "start_equity": "Капітал на старті, USDT",
     "end_equity": "Капітал в кінці, USDT", "pnl_pct": "Результат, %", "buy_and_hold_pct": "Просто тримати ETH, %",
@@ -154,9 +184,17 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
     w.add_argument("--summary-md")
 
+    lv = sub.add_parser("live", help="живий агент: paper або testnet")
+    lv.add_argument("--mode", choices=["paper", "testnet", "live"], default="paper")
+    lv.add_argument("--config", default="config.yaml")
+    lv.add_argument("--home", default="~/.eth-agent", help="журнал, стан, secrets.env (поза git)")
+    lv.add_argument("--minutes", type=int, default=0, help="зупинитись через N хвилин (для тесту)")
+    lv.add_argument("--clear-kill", action="store_true", help="зняти kill switch вручну")
+    lv.add_argument("--telegram-setup", action="store_true", help="показати chat id для secrets.env")
+
     a = p.parse_args(argv)
     return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
-            "walkforward": _cmd_walkforward}[a.cmd](a)
+            "walkforward": _cmd_walkforward, "live": _cmd_live}[a.cmd](a)
 
 
 if __name__ == "__main__":

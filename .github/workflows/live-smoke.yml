@@ -44,7 +44,11 @@ jobs:
           bad = [e for e in ev if e[0] == "ERROR"]
           state = json.load(open("smoke/state_paper.json"))
           phases = [b["phase"] for b in state["bots"]]
-          msg = f"подій {len(ev)}, помилок {len(bad)}, фази ботів {phases}"
+          stt = json.load(open("smoke/status_paper.json"))
+          msg = (f"ціна {stt['price']} · ATR {stt['atr']} ({stt['atr_pct']} %) · нахил EMA {stt['ema_slope_pct']} % · "
+                 f"максимум {stt['anchor_high']} · входи: {stt['entry_gate']} · рівні зведення "
+                 f"{[b['level'] for b in stt['bots']]} · подій {len(ev)}, помилок {len(bad)}, фази {phases}")
+          assert stt["atr"] not in ("None", None), "ATR не пораховано"
           print("::notice title=Paper smoke::" + msg + "%0A" + "%0A".join(f"{l} {k}: {m}" for l, k, m in ev[-15:]))
           with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a") as f:
               f.write("## Paper smoke\n\n" + msg + "\n\n" + "\n".join(f"- {l} {k}: {m}" for l, k, m in ev[-30:]) + "\n")

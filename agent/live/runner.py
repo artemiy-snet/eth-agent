@@ -11,6 +11,7 @@ live (реальні гроші) заблоковано до проходжен�
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import time
 from dataclasses import dataclass, field
@@ -280,7 +281,8 @@ class Agent:
                     continue
                 self.risk.on_order(now)
                 self.execute(it, now)
-            self.status(now, px)
+            st = self.status(now, px)
+            (self.home / f"status_{self.s.mode}.json").write_text(json.dumps(st, ensure_ascii=False, indent=1))
         self.extra["killed"] = self.risk.killed
         self.extra["kill_reason"] = self.risk.kill_reason
         self.extra["peak_equity"] = self.risk.peak_equity

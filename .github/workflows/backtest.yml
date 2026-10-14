@@ -1,0 +1,131 @@
+name: backtest
+
+# Запуск з телефону: github.com/artemiy-snet/eth-agent → Actions → backtest → Run workflow.
+# Звіт — таблицею на сторінці запуску (Summary), JSON — в Artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Початок, YYYY-MM (порожньо = 12 останніх повних місяців)"
+        required: false
+        default: ""
+      end:
+        description: "Кінець, YYYY-MM (порожньо = минулий місяць)"
+        required: false
+        default: ""
+      strategy:
+        description: "Стратегія"
+        type: choice
+        options: [legacy_v2]
+        default: legacy_v2
+      bots:
+        description: "Кількість ботів (порожньо = з конфігу)"
+        required: false
+        default: ""
+      interval_pct:
+        description: "Крок сітки між ботами, %"
+        required: false
+        default: ""
+      limit_pct:
+        description: "Пороги точок ±% (limit_up / limit_bot для купівлі й продажу)"
+        required: false
+        default: ""
+      sell_on_any_level:
+        description: "isSellOnAnyLevel"
+        type: boolean
+        default: false
+      extra:
+        description: "Додатково, через пробіл: legacy.step_sell_pct=0.5 legacy.greedy_buy=1"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+
+      - name: Період і параметри
+        id: args
+        env:
+          IN_START: ${{ inputs.start }}
+          IN_END: ${{ inputs.end }}
+          IN_BOTS: ${{ inputs.bots }}
+          IN_INTERVAL: ${{ inputs.interval_pct }}
+          IN_LIMIT: ${{ inputs.limit_pct }}
+          IN_ANY: ${{ inputs.sell_on_any_level }}
+          IN_EXTRA: ${{ inputs.extra }}
+        run: |
+          python - <<'PY'
+          import os, re
+          from datetime import date
+          t = date.today().replace(day=1)
+          prev = date.fromordinal(t.toordinal() - 1)
+          end = os.environ["IN_END"].strip() or prev.strftime("%Y-%m")
+          y, m = map(int, end.split("-"))
+          y0, m0 = (y, m - 11) if m > 11 else (y - 1, m + 1)
+          start = os.environ["IN_START"].strip() or f"{y0:04d}-{m0:02d}"
+          ym = re.compile(r"^\d{4}-\d{2}$")
+          assert ym.match(start) and ym.match(end), "формат YYYY-MM"
+          sets = []
+          num = re.compile(r"^-?\d+(\.\d+)?$")
+          def add(key, val):
+              val = val.strip()
+              if val:
+                  assert num.match(val), f"{key}: очікую число, отримав {val!r}"
+                  sets.append(f"{key}={val}")
+          add("legacy.bots", os.environ["IN_BOTS"])
+          add("legacy.interval_pct", os.environ["IN_INTERVAL"])
+          lim = os.environ["IN_LIMIT"].strip().lstrip("+-")
+          if lim:
+              for side in ("buy", "sell"):
+                  add(f"legacy.{side}.limit_up", lim)
+                  add(f"legacy.{side}.limit_bot", "-" + lim)
+          sets.append(f"legacy.sell_on_any_level={os.environ['IN_ANY'].lower()}")
+          for item in os.environ["IN_EXTRA"].split():
+              assert re.match(r"^[a-z_.]+=[-\w.]+$", item), f"погане перевизначення: {item!r}"
+              sets.append(item)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"start={start}\nend={end}\n")
+              f.write("sets=" + " ".join(f"--set {s}" for s in sets) + "\n")
+          print(start, end, sets)
+          PY
+
+      - name: Кеш історії свічок
+        uses: actions/cache@v4
+        with:
+          path: data/klines
+          key: klines-ETHUSDT-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
+          restore-keys: klines-ETHUSDT-
+
+      - name: Завантаження історії (data.binance.vision)
+        run: eth-agent fetch --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
+
+      - name: Пропуски в даних
+        run: eth-agent gaps --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} | head -20
+
+      - name: Бектест
+        run: |
+          mkdir -p reports
+          eth-agent backtest --config config.example.yaml \
+            --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} \
+            --strategy ${{ inputs.strategy }} ${{ steps.args.outputs.sets }} \
+            --out reports/backtest.json --summary-md reports/summary.md
+          cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Параметри: \`${{ steps.args.outputs.sets }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backtest-${{ github.run_number }}
+          path: reports/

@@ -63,5 +63,20 @@ class Config(BaseModel):
     legacy: LegacyCfg | None = None
 
 
-def load_config(path: Path) -> Config:
-    return Config.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+def apply_overrides(raw: dict, overrides: list[str]) -> dict:
+    """['legacy.bots=7', 'legacy.buy.limit_bot=-0.5'] → змінює вкладені ключі (значення парсяться як YAML)."""
+    for item in overrides:
+        key, _, value = item.partition("=")
+        if not key or not _:
+            raise ValueError(f"очікую ключ=значення, отримав {item!r}")
+        node = raw
+        *path, last = key.strip().split(".")
+        for k in path:
+            node = node.setdefault(k, {})
+        node[last] = yaml.safe_load(value)
+    return raw
+
+
+def load_config(path: Path, overrides: list[str] | None = None) -> Config:
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return Config.model_validate(apply_overrides(raw, overrides or []))

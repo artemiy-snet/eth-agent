@@ -20,6 +20,7 @@ from pathlib import Path
 import pandas as pd
 
 VISION_URL = "https://data.binance.vision/data/spot/monthly/klines/{s}/{i}/{s}-{i}-{m}.zip"
+VISION_DAILY_URL = "https://data.binance.vision/data/spot/daily/klines/{s}/{i}/{s}-{i}-{d}.zip"
 REST_URL = "https://api.binance.com/api/v3/klines"
 COLUMNS = [
     "open_time", "open", "high", "low", "close", "volume",
@@ -88,6 +89,23 @@ def _fetch_rest(client, symbol: str, interval: str, start_ms: int, end_ms: int) 
     return _normalize(df) if rows else df[KEEP]
 
 
+def _fetch_daily(client, symbol: str, interval: str, month: str, log) -> pd.DataFrame | None:
+    """Денні архіви data.binance.vision (для поточного місяця; публікуються з затримкою ~1 доба)."""
+    y, m = map(int, month.split("-"))
+    parts = []
+    day = date(y, m, 1)
+    while day.month == m and day < date.today():
+        r = client.get(VISION_DAILY_URL.format(s=symbol, i=interval, d=day.isoformat()))
+        if r.status_code == 200:
+            parts.append(parse_vision_zip(r.content))
+        day = date.fromordinal(day.toordinal() + 1)
+    if not parts:
+        return None
+    df = pd.concat(parts, ignore_index=True)
+    log(f"{month}: денні архіви ({len(parts)} дн.), {len(df)} свічок")
+    return df
+
+
 def _month_bounds_ms(month: str) -> tuple[int, int]:
     y, m = map(int, month.split("-"))
     start = datetime(y, m, 1, tzinfo=UTC)
@@ -117,12 +135,18 @@ def download(symbol: str, start: str, end: str, cache: Path, interval: str = "1m
                 r = client.get(VISION_URL.format(s=symbol, i=interval, m=month))
                 if r.status_code == 200:
                     df = parse_vision_zip(r.content)
-                    log(f"{month}: архів data.binance.vision, {len(df)} свічок")
+                    log(f"{month}: місячний архів, {len(df)} свічок")
             if df is None:
-                s, e = _month_bounds_ms(month)
-                e = min(e, int(time.time() * 1000))
-                df = _fetch_rest(client, symbol, interval, s, e)
-                log(f"{month}: REST, {len(df)} свічок")
+                df = _fetch_daily(client, symbol, interval, month, log)
+            if df is None or df.empty:
+                # REST — останній варіант (з деяких країн/хмар api.binance.com недоступний, HTTP 451)
+                try:
+                    s_ms, e_ms = _month_bounds_ms(month)
+                    df = _fetch_rest(client, symbol, interval, s_ms, min(e_ms, int(time.time() * 1000)))
+                    log(f"{month}: REST, {len(df)} свічок")
+                except Exception as exc:  # noqa: BLE001
+                    log(f"{month}: REST недоступний ({exc}); пропускаю місяць")
+                    continue
             df.to_parquet(path, index=False)
             paths.append(path)
     return paths
@@ -135,6 +159,8 @@ def load(symbol: str, start: str, end: str, cache: Path, interval: str = "1m") -
     for month in month_range(start, end):
         p = d / f"{month}.parquet"
         if not p.exists():
+            if month >= date.today().strftime("%Y-%m"):
+                continue  # поточний місяць може бути ще не опублікований
             raise FileNotFoundError(f"Немає {p}. Спершу: eth-agent fetch --start {start} --end {end}")
         parts.append(pd.read_parquet(p))
     df = pd.concat(parts, ignore_index=True)

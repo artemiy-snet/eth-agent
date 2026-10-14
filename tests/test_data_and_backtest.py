@@ -78,3 +78,12 @@ def test_backtest_runs_and_accounts_consistently():
     assert sells == len(rep.trades) and buys - sells == rep.open_positions
     s = rep.summary()
     assert s["trades"] == len(rep.trades)
+
+
+def test_config_overrides(tmp_path):
+    from agent.config import load_config
+
+    p = tmp_path / "c.yaml"
+    p.write_text(open("config.example.yaml", encoding="utf-8").read(), encoding="utf-8")
+    cfg = load_config(p, ["legacy.bots=7", "legacy.buy.limit_bot=-0.5", "legacy.sell_on_any_level=true"])
+    assert cfg.legacy.bots == 7 and cfg.legacy.buy.limit_bot == Decimal("-0.5") and cfg.legacy.sell_on_any_level

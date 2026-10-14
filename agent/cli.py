@@ -18,10 +18,13 @@ from agent.money import D
 def _cmd_fetch(a) -> int:
     from agent.data import exchange_info, klines
 
-    klines.download(a.symbol, a.start, a.end, Path(a.data))
-    f = exchange_info.fetch_filters(a.symbol, cache_dir=Path(a.data))
-    print(f"exchangeInfo {a.symbol}: tick={f.tick_size} step={f.step_size} minNotional={f.min_notional}")
-    return 0
+    paths = klines.download(a.symbol, a.start, a.end, Path(a.data))
+    try:
+        f = exchange_info.fetch_filters(a.symbol, cache_dir=Path(a.data))
+        print(f"exchangeInfo {a.symbol}: tick={f.tick_size} step={f.step_size} minNotional={f.min_notional}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"exchangeInfo недоступний ({exc}); бектест візьме вбудовані фільтри ETHUSDT")
+    return 0 if paths else 1
 
 
 def _cmd_gaps(a) -> int:
@@ -40,7 +43,7 @@ def _cmd_backtest(a) -> int:
     from agent.config import load_config
     from agent.data import exchange_info, klines
 
-    cfg = load_config(Path(a.config))
+    cfg = load_config(Path(a.config), a.set)
     data = Path(a.data)
     df = klines.load(cfg.agent.pair, a.start, a.end, data)
     filters = exchange_info.load_cached_filters(cfg.agent.pair, data) or exchange_info.ETHUSDT_DEFAULT
@@ -51,10 +54,36 @@ def _cmd_backtest(a) -> int:
     rep, _ = run_legacy(df, params)
     out = {"strategy": "legacy_v2", "grid_base": str(params.base_price), **rep.summary()}
     print(json.dumps(out, ensure_ascii=False, indent=2))
+    if a.summary_md:
+        Path(a.summary_md).write_text(_report_md(out, a), encoding="utf-8")
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
+
+
+LABELS = {
+    "period": "Період", "grid_base": "База сітки", "start_equity": "Капітал на старті, USDT",
+    "end_equity": "Капітал в кінці, USDT", "pnl_pct": "Результат, %", "buy_and_hold_pct": "Просто тримати ETH, %",
+    "realized_pnl_usdt": "Реалізований PnL, USDT", "unrealized_pnl_usdt": "Нереалізований PnL, USDT",
+    "trades": "Закритих угод", "win_rate_pct": "Виграшних, %", "profit_factor_closed": "Profit factor (закриті)",
+    "max_dd_pct": "Макс. просадка, %", "avg_hold_h": "Сер. час у позиції, год", "max_hold_h": "Макс. час у позиції, год",
+    "open_positions_at_end": "Відкритих позицій у кінці",
+}
+
+
+def _report_md(out: dict, a) -> str:
+    rows = "\n".join(f"| {LABELS.get(k, k)} | {v} |" for k, v in out.items() if k != "strategy")
+    verdict = []
+    try:
+        if float(out["pnl_pct"]) < float(out["buy_and_hold_pct"]):
+            verdict.append("Стратегія гірша за просте утримання ETH.")
+        if int(out["open_positions_at_end"]) > 0:
+            verdict.append(f"У кінці {out['open_positions_at_end']} позицій «застрягли» — дивись нереалізований PnL.")
+    except (KeyError, ValueError):
+        pass
+    return (f"## Бектест `{out['strategy']}` · {a.start} … {a.end}\n\n| Показник | Значення |\n|---|---|\n"
+            f"{rows}\n\n" + ("\n".join(f"- {v}" for v in verdict) + "\n" if verdict else ""))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--end", required=True)
     b.add_argument("--strategy", default="legacy_v2", choices=["legacy_v2", "v3"])
     b.add_argument("--out", help="зберегти звіт JSON")
+    b.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ",
+                   help="перевизначити параметр конфігу, напр. legacy.bots=7 (можна кілька разів)")
+    b.add_argument("--summary-md", help="зберегти звіт Markdown (для сторінки GitHub Actions)")
 
     a = p.parse_args(argv)
     return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest}[a.cmd](a)

@@ -47,6 +47,7 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
     slip = slippage_pct / HUNDRED
     fee = p.fee_pct / HUNDRED
     daily_eq: dict[int, float] = {}
+    daily_px: dict[int, float] = {}
     minutes_total = minutes_in_market = 0
     bh_peak, bh_dd = float(first_px), 0.0
 
@@ -64,6 +65,7 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
                     risk.on_price_move(minute, mv)
             eq = state.equity(last_px)
             daily_eq[minute // 86_400_000] = float(eq)
+            daily_px[minute // 86_400_000] = float(last_px)
             minutes_total += 1
             minutes_in_market += any(b.phase is not v3.Phase.FLAT for b in state.bots)
             lp = float(last_px)
@@ -109,6 +111,9 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
     eqs = np.array(list(daily_eq.values()))
     rets = np.diff(eqs) / eqs[:-1] if len(eqs) > 2 else np.array([])
     sharpe = float(rets.mean() / rets.std() * np.sqrt(365)) if len(rets) > 1 and rets.std() > 0 else 0.0
+    pxs = np.array(list(daily_px.values()))
+    bret = np.diff(pxs) / pxs[:-1] if len(pxs) > 2 else np.array([])
+    bh_sharpe = float(bret.mean() / bret.std() * np.sqrt(365)) if len(bret) > 1 and bret.std() > 0 else 0.0
     years = max(len(eqs) / 365, 1e-9)
     cagr = (float(end_eq) / float(start_eq)) ** (1 / years) - 1 if start_eq > 0 and end_eq > 0 else -1.0
     return Report(
@@ -121,6 +126,7 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
             "sharpe": f"{sharpe:.2f}",
             "exposure_pct": f"{100 * minutes_in_market / max(minutes_total, 1):.1f}",
             "buy_and_hold_max_dd_pct": f"{bh_dd:.2f}",
+            "buy_and_hold_sharpe": f"{bh_sharpe:.2f}",
             "exits": dict(reasons),
             "risk_vetoes": dict(vetoes),
             "gate_blocks": dict(gate_blocks),

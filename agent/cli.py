@@ -102,7 +102,7 @@ LABELS = {
     "exits": "Виходи (причина: к-сть)", "risk_vetoes": "Вето ризику", "gate_blocks": "Блоки фільтрів входу",
     "kill_switch": "Kill switch", "risk_events": "Подій ризику",
     "cagr_pct": "Річна дохідність (CAGR), %", "sharpe": "Sharpe (річний)", "exposure_pct": "Час у ринку, %",
-    "buy_and_hold_max_dd_pct": "Просадка «просто тримати», %",
+    "buy_and_hold_max_dd_pct": "Просадка «просто тримати», %", "buy_and_hold_sharpe": "Sharpe «просто тримати»",
 }
 
 

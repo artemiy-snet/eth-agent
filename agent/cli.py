@@ -72,6 +72,25 @@ def _cmd_backtest(a) -> int:
     return 0
 
 
+def _cmd_walkforward(a) -> int:
+    import yaml
+
+    from agent.data import klines
+    from agent.learning import walkforward as wf
+
+    raw = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) or {}
+    from agent.config import apply_overrides
+    raw = apply_overrides(raw, a.set)
+    df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
+    res = wf.run_grid(df, raw, wf.default_grid(), workers=a.workers)
+    r = wf.walk_forward(res, train=a.train, test=a.test)
+    md = wf.report_md(r, a.start, a.end)
+    print(md)
+    if a.summary_md:
+        Path(a.summary_md).write_text(md, encoding="utf-8")
+    return 0
+
+
 LABELS = {
     "period": "Період", "grid_base": "База сітки", "start_equity": "Капітал на старті, USDT",
     "end_equity": "Капітал в кінці, USDT", "pnl_pct": "Результат, %", "buy_and_hold_pct": "Просто тримати ETH, %",
@@ -120,8 +139,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="перевизначити параметр конфігу, напр. legacy.bots=7 (можна кілька разів)")
     b.add_argument("--summary-md", help="зберегти звіт Markdown (для сторінки GitHub Actions)")
 
+    w = sub.add_parser("walkforward")
+    w.add_argument("--config", default="config.yaml")
+    w.add_argument("--start", required=True)
+    w.add_argument("--end", required=True)
+    w.add_argument("--train", type=int, default=3)
+    w.add_argument("--test", type=int, default=1)
+    w.add_argument("--workers", type=int, default=None)
+    w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
+    w.add_argument("--summary-md")
+
     a = p.parse_args(argv)
-    return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest}[a.cmd](a)
+    return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
+            "walkforward": _cmd_walkforward}[a.cmd](a)
 
 
 if __name__ == "__main__":

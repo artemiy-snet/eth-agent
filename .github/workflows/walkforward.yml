@@ -1,0 +1,99 @@
+name: walkforward
+
+# З телефону: Actions → walkforward → Run workflow. Звіт — у Summary запуску.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Початок, YYYY-MM (порожньо = 12 останніх повних місяців)"
+        required: false
+        default: ""
+      end:
+        description: "Кінець, YYYY-MM (порожньо = минулий місяць)"
+        required: false
+        default: ""
+      train:
+        description: "Місяців навчання у вікні"
+        required: false
+        default: "3"
+      extra:
+        description: "Спільні перевизначення для всіх варіантів, напр.: risk.max_dd_pct=15"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  walkforward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+
+      - name: Період
+        id: args
+        env:
+          IN_START: ${{ inputs.start }}
+          IN_END: ${{ inputs.end }}
+          IN_TRAIN: ${{ inputs.train }}
+          IN_EXTRA: ${{ inputs.extra }}
+        run: |
+          python - <<'PY'
+          import os, re
+          from datetime import date
+          t = date.today().replace(day=1)
+          prev = date.fromordinal(t.toordinal() - 1)
+          end = os.environ["IN_END"].strip() or prev.strftime("%Y-%m")
+          y, m = map(int, end.split("-"))
+          y0, m0 = (y, m - 11) if m > 11 else (y - 1, m + 1)
+          start = os.environ["IN_START"].strip() or f"{y0:04d}-{m0:02d}"
+          ym = re.compile(r"^\d{4}-\d{2}$")
+          assert ym.match(start) and ym.match(end), "формат YYYY-MM"
+          train = os.environ["IN_TRAIN"].strip() or "3"
+          assert train.isdigit() and 1 <= int(train) <= 12
+          sets = []
+          for item in os.environ["IN_EXTRA"].split():
+              assert re.match(r"^[a-z0-9_.]+=[-\w.]+$", item), f"погане перевизначення: {item!r}"
+              sets.append(f"--set {item}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"start={start}\nend={end}\ntrain={train}\nsets={' '.join(sets)}\n")
+          PY
+
+      - name: Кеш історії свічок
+        uses: actions/cache@v4
+        with:
+          path: data/klines
+          key: klines-ETHUSDT-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
+          restore-keys: klines-ETHUSDT-
+
+      - name: Завантаження історії
+        run: eth-agent fetch --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
+
+      - name: Walk-forward
+        run: |
+          mkdir -p reports
+          eth-agent walkforward --config config.example.yaml \
+            --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} \
+            --train ${{ steps.args.outputs.train }} ${{ steps.args.outputs.sets }} \
+            --summary-md reports/walkforward.md
+          cat reports/walkforward.md >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY'
+          t = open("reports/walkforward.md", encoding="utf-8").read()
+          # GitHub-анотація: до ~4 КБ, тому лише головне
+          head = t.split("### Вікна")[0].replace("\n", "%0A")
+          print("::notice title=Walk-forward::" + head[:3800])
+          tail = ("### Вікна" + t.split("### Вікна")[1]).replace("\n", "%0A")
+          print("::notice title=Walk-forward вікна::" + tail[:3800])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: walkforward-${{ github.run_number }}
+          path: reports/

@@ -24,8 +24,11 @@ def _dec(x: float) -> Decimal | None:
 
 
 def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
-           fp: FeatureParams = FeatureParams(), slippage_pct: Decimal = D("0.05")) -> Report:
-    feats = compute_features(df, fp)
+           fp: FeatureParams = FeatureParams(), slippage_pct: Decimal = D("0.05"),
+           feats: pd.DataFrame | None = None) -> Report:
+    """feats — передраховані ознаки (з прогрітою історією до початку df), інакше рахуються з df."""
+    if feats is None:
+        feats = compute_features(df, fp)
     fmap = {int(m): i for i, m in enumerate(feats["minute"].to_numpy())}
     cols = {c: feats[c].to_numpy() for c in ("atr", "atr_pct", "ema_slope_pct", "anchor_high", "ret_1m_pct")}
 

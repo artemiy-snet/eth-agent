@@ -70,11 +70,11 @@ class V3Cfg(BaseModel):
     budget_usdt_per_bot: Decimal = Decimal("100")
     buy: PointCfg = PointCfg(limit_up=Decimal("1.0"), limit_bot=Decimal("-1.0"),
                              action_up=Decimal("0.4"), action_bot=Decimal("0.1"))
-    sell: PointCfg = PointCfg(limit_up=Decimal("1.0"), limit_bot=Decimal("-1.0"),
-                              action_up=Decimal("0.1"), action_bot=Decimal("-0.4"))
+    sell: PointCfg = PointCfg(limit_up=Decimal("2.0"), limit_bot=Decimal("-1.0"),
+                              action_up=Decimal("0.5"), action_bot=Decimal("-0.4"))
     min_edge_pct: Decimal = Decimal("0.15")
     fee_pct: Decimal = Decimal("0.1")
-    k_stop_atr: Decimal = Decimal("3")
+    k_stop_atr: Decimal = Decimal("2")
     max_hold_h: int = 72
     risk_per_trade_pct: Decimal = Decimal("0.5")
     filters: V3FiltersCfg = V3FiltersCfg()
@@ -92,7 +92,7 @@ class V3Cfg(BaseModel):
 
 
 class FeaturesCfg(BaseModel):
-    atr_tf: Literal["5m", "15m", "30m", "1h", "4h", "1d"] = "1h"
+    atr_tf: Literal["5m", "15m", "30m", "1h", "4h", "1d"] = "1d"
     atr_len: int = 14
     ema_len: int = 200
     ema_slope_h: int = 24

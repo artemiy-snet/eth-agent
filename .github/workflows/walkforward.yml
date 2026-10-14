@@ -16,12 +16,16 @@ on:
       train:
         description: "Місяців навчання у вікні"
         required: false
+        default: "12"
+      test:
+        description: "Місяців перевірки у вікні"
+        required: false
         default: "3"
       grid:
         description: "Сітка гіпотез"
         type: choice
-        options: [v2, v1]
-        default: v2
+        options: [daily, v2, v1]
+        default: daily
       extra:
         description: "Спільні перевизначення для всіх варіантів, напр.: risk.max_dd_pct=15"
         required: false
@@ -48,6 +52,7 @@ jobs:
           IN_START: ${{ inputs.start }}
           IN_END: ${{ inputs.end }}
           IN_TRAIN: ${{ inputs.train }}
+          IN_TEST: ${{ inputs.test }}
           IN_EXTRA: ${{ inputs.extra }}
         run: |
           python - <<'PY'
@@ -62,13 +67,15 @@ jobs:
           ym = re.compile(r"^\d{4}-\d{2}$")
           assert ym.match(start) and ym.match(end), "формат YYYY-MM"
           train = os.environ["IN_TRAIN"].strip() or "3"
-          assert train.isdigit() and 1 <= int(train) <= 12
+          assert train.isdigit() and 1 <= int(train) <= 36
+          test = os.environ["IN_TEST"].strip() or "3"
+          assert test.isdigit() and 1 <= int(test) <= 12
           sets = []
           for item in os.environ["IN_EXTRA"].split():
               assert re.match(r"^[a-z0-9_.]+=[-\w.]+$", item), f"погане перевизначення: {item!r}"
               sets.append(f"--set {item}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"start={start}\nend={end}\ntrain={train}\nsets={' '.join(sets)}\n")
+              f.write(f"start={start}\nend={end}\ntrain={train}\ntest={test}\nsets={' '.join(sets)}\n")
           PY
 
       - name: Кеш історії свічок
@@ -86,7 +93,7 @@ jobs:
           mkdir -p reports
           eth-agent walkforward --config config.example.yaml \
             --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} \
-            --train ${{ steps.args.outputs.train }} --grid ${{ inputs.grid }} ${{ steps.args.outputs.sets }} \
+            --train ${{ steps.args.outputs.train }} --test ${{ steps.args.outputs.test }} --grid ${{ inputs.grid }} ${{ steps.args.outputs.sets }} \
             --summary-md reports/walkforward.md
           cat reports/walkforward.md >> "$GITHUB_STEP_SUMMARY"
           python - <<'PY'

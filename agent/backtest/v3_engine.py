@@ -46,6 +46,9 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
     last_px, cur_min, f = first_px, None, v3.Features(atr=None)
     slip = slippage_pct / HUNDRED
     fee = p.fee_pct / HUNDRED
+    daily_eq: dict[int, float] = {}
+    minutes_total = minutes_in_market = 0
+    bh_peak, bh_dd = float(first_px), 0.0
 
     for tick in ticks_from_klines(df):
         minute = tick.ts // 60_000 * 60_000
@@ -60,6 +63,12 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
                 if mv is not None:
                     risk.on_price_move(minute, mv)
             eq = state.equity(last_px)
+            daily_eq[minute // 86_400_000] = float(eq)
+            minutes_total += 1
+            minutes_in_market += any(b.phase is not v3.Phase.FLAT for b in state.bots)
+            lp = float(last_px)
+            bh_peak = max(bh_peak, lp)
+            bh_dd = max(bh_dd, (bh_peak - lp) / bh_peak * 100)
             risk.on_equity(minute, eq)
             peak = max(peak, eq)
             if peak > 0:
@@ -97,12 +106,21 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
         last_px = tick.price
 
     end_eq = state.equity(last_px)
+    eqs = np.array(list(daily_eq.values()))
+    rets = np.diff(eqs) / eqs[:-1] if len(eqs) > 2 else np.array([])
+    sharpe = float(rets.mean() / rets.std() * np.sqrt(365)) if len(rets) > 1 and rets.std() > 0 else 0.0
+    years = max(len(eqs) / 365, 1e-9)
+    cagr = (float(end_eq) / float(start_eq)) ** (1 / years) - 1 if start_eq > 0 and end_eq > 0 else -1.0
     return Report(
         start_ts=int(df["open_time"].iloc[0]), end_ts=int(df["open_time"].iloc[-1]),
         start_equity=start_eq, end_equity=end_eq, trades=trades, max_dd_pct=max_dd,
         open_positions=sum(1 for b in state.bots if b.phase is not v3.Phase.FLAT),
         buy_and_hold_pct=(last_px / first_px - 1) * 100,
         extra={
+            "cagr_pct": f"{cagr * 100:.2f}",
+            "sharpe": f"{sharpe:.2f}",
+            "exposure_pct": f"{100 * minutes_in_market / max(minutes_total, 1):.1f}",
+            "buy_and_hold_max_dd_pct": f"{bh_dd:.2f}",
             "exits": dict(reasons),
             "risk_vetoes": dict(vetoes),
             "gate_blocks": dict(gate_blocks),

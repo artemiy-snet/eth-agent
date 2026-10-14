@@ -83,7 +83,8 @@ def _cmd_walkforward(a) -> int:
     raw = apply_overrides(raw, a.set)
     df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
     res = wf.run_grid(df, raw, wf.GRIDS[a.grid](), workers=a.workers)
-    r = wf.walk_forward(res, train=a.train, test=a.test)
+    r = wf.walk_forward(res, train=a.train, test=a.test, baseline=wf.BASELINES[a.grid],
+                        min_train_trades=a.min_train_trades)
     md = wf.report_md(r, a.start, a.end)
     print(md)
     if a.summary_md:
@@ -100,6 +101,8 @@ LABELS = {
     "open_positions_at_end": "Відкритих позицій у кінці",
     "exits": "Виходи (причина: к-сть)", "risk_vetoes": "Вето ризику", "gate_blocks": "Блоки фільтрів входу",
     "kill_switch": "Kill switch", "risk_events": "Подій ризику",
+    "cagr_pct": "Річна дохідність (CAGR), %", "sharpe": "Sharpe (річний)", "exposure_pct": "Час у ринку, %",
+    "buy_and_hold_max_dd_pct": "Просадка «просто тримати», %",
 }
 
 
@@ -146,7 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--train", type=int, default=3)
     w.add_argument("--test", type=int, default=1)
     w.add_argument("--workers", type=int, default=None)
-    w.add_argument("--grid", default="v2", choices=["v1", "v2"])
+    w.add_argument("--grid", default="daily", choices=["daily", "v2", "v1"])
+    w.add_argument("--min-train-trades", type=int, default=5)
     w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
     w.add_argument("--summary-md")
 

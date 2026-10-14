@@ -68,7 +68,29 @@ def grid_v2() -> list[Variant]:
     return out
 
 
-GRIDS = {"v1": None, "v2": grid_v2}
+def grid_daily() -> list[Variant]:
+    """Сітка №3: лише денний ATR (висновок walk-forward №2). Розмір ризику НЕ підбирається —
+    це рішення Командира (Біблія, розділ 5)."""
+    exits = {
+        "E2": ["v3.sell.limit_up=2.0", "v3.sell.action_up=0.5"],
+        "E3": ["v3.sell.limit_up=3.0", "v3.sell.action_up=1.0"],
+    }
+    out = []
+    for k in ("2", "3"):
+        for en, ex in exits.items():
+            for hold in ("72", "168"):
+                for anchor in ("24", "72"):
+                    for amax in ("4", "15"):
+                        out.append(Variant(f"1d·stop{k}·{en}·hold{hold}·anc{anchor}·amax{amax}",
+                                           ["features.atr_tf=1d", f"v3.k_stop_atr={k}", *ex,
+                                            f"v3.max_hold_h={hold}", f"features.anchor_h={anchor}",
+                                            f"v3.filters.atr_max_pct={amax}"]))
+    return out
+
+
+DAILY_BASELINE = "1d·stop2·E2·hold72·anc24·amax4"
+GRIDS = {"v1": None, "v2": grid_v2, "daily": grid_daily}
+BASELINES = {"v1": "1h·stop3·E1", "v2": "1h·stop3·E1", "daily": DAILY_BASELINE}
 
 
 def default_grid() -> list[Variant]:
@@ -171,7 +193,7 @@ def walk_forward(results: list[MonthResult], train: int = 3, test: int = 1,
     base_trades: list[Decimal] = []
     oos_dd, base_dd = ZERO, ZERO
     for k in range(0, len(months) - train - test + 1, test):
-        tr, te = months[k:k + train], months[k + train]
+        tr, te = months[k:k + train], months[k + train:k + train + test]
         best, best_pnl = None, None
         for v in variants:
             rs = [by[(v, m)] for m in tr]
@@ -180,11 +202,16 @@ def walk_forward(results: list[MonthResult], train: int = 3, test: int = 1,
             if n >= min_train_trades and (best_pnl is None or pnl > best_pnl):
                 best, best_pnl = v, pnl
         best = best or baseline
-        chosen, base = by[(best, te)], by[(baseline, te)]
-        windows.append(WindowResult(tr, te, best, best_pnl or ZERO, chosen.pnl, base.pnl))
-        oos_trades += chosen.trades
-        base_trades += base.trades
-        oos_dd, base_dd = max(oos_dd, chosen.max_dd), max(base_dd, base.max_dd)
+        ch = [by[(best, m)] for m in te]
+        bs = [by[(baseline, m)] for m in te]
+        windows.append(WindowResult(tr, te[0] if len(te) == 1 else f"{te[0]}…{te[-1]}", best, best_pnl or ZERO,
+                                    sum((r.pnl for r in ch), ZERO), sum((r.pnl for r in bs), ZERO)))
+        for r in ch:
+            oos_trades += r.trades
+            oos_dd = max(oos_dd, r.max_dd)
+        for r in bs:
+            base_trades += r.trades
+            base_dd = max(base_dd, r.max_dd)
 
     oos_pnl = sum((w.test_pnl for w in windows), ZERO)
     base_pnl = sum((w.base_test_pnl for w in windows), ZERO)
@@ -228,7 +255,7 @@ def report_md(r: dict, start: str, end: str) -> str:
     f = lambda x, n=2: "—" if x is None else f"{x:.{n}f}"
     ok = lambda b: "✅" if b else "❌"
     L = [f"## Walk-forward v3 · {start} … {end}", "",
-         f"Перевірено варіантів: **{r['variants_tested']}**. Вікна: навчання 3 міс → перевірка 1 міс.",
+         f"Перевірено варіантів: **{r['variants_tested']}**. Вікон: {len(r['windows'])}. Базовий: `{r['baseline']['name']}`.",
          f"Вердикт: **{'ПРОЙДЕНО' if r['passed'] else 'НЕ ПРОЙДЕНО'}**", "",
          "### Out-of-sample (лише місяці перевірки)", "",
          "| | Обраний на навчанні | Базовий (Біблія) |", "|---|---|---|",
@@ -246,3 +273,7 @@ def report_md(r: dict, start: str, end: str) -> str:
          *[f"| {x['variant']} | {f(x['pnl'])} | {x['trades']} | {f(x['pf'])} | {x['kills']} |"
            for x in r["in_sample_table"]], ""]
     return "\n".join(L)
+
+
+def report_md_header(r: dict) -> str:
+    return f"Базовий варіант: `{r['baseline']['name']}`"

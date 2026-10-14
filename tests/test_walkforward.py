@@ -49,3 +49,22 @@ def test_grid_runs_end_to_end_on_synthetic():
     r = wf.walk_forward(res, train=3, baseline="base", min_train_trades=0)
     assert len(r["windows"]) == 1
     assert "Walk-forward" in wf.report_md(r, "a", "b")
+
+
+def test_multi_month_test_window():
+    months = [f"2025-{m:02d}" for m in range(1, 9)]
+    res = []
+    for m in months:
+        res.append(mr("A", m, 2))
+        res.append(mr("base", m, 1))
+    r = walk_forward(res, train=4, test=2, baseline="base")
+    assert [w.test for w in r["windows"]] == ["2025-05…2025-06", "2025-07…2025-08"]
+    assert r["windows"][0].test_pnl == D(4) and r["oos"]["pnl"] == D(8)
+
+
+def test_daily_grid_has_baseline_and_no_risk_param():
+    from agent.learning.walkforward import DAILY_BASELINE, grid_daily
+
+    g = grid_daily()
+    assert DAILY_BASELINE in {v.name for v in g}
+    assert not any("risk_per_trade" in o for v in g for o in v.overrides)

@@ -52,6 +52,7 @@ class Report:
     max_dd_pct: Decimal = ZERO
     open_positions: int = 0
     buy_and_hold_pct: Decimal = ZERO
+    extra: dict = field(default_factory=dict)
 
     @property
     def pnl_usdt(self) -> Decimal:
@@ -98,6 +99,7 @@ class Report:
             "avg_hold_h": f"{(sum(hold_h) / len(hold_h)) if hold_h else 0:.1f}",
             "max_hold_h": f"{max(hold_h) if hold_h else 0:.1f}",
             "open_positions_at_end": self.open_positions,
+            **self.extra,
         }
 
 

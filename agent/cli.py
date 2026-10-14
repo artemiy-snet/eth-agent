@@ -47,12 +47,22 @@ def _cmd_backtest(a) -> int:
     data = Path(a.data)
     df = klines.load(cfg.agent.pair, a.start, a.end, data)
     filters = exchange_info.load_cached_filters(cfg.agent.pair, data) or exchange_info.ETHUSDT_DEFAULT
-    if a.strategy != "legacy_v2" or cfg.legacy is None:
-        print("Поки реалізовано лише --strategy legacy_v2 (потрібна секція legacy у конфігу)")
-        return 2
-    params = cfg.legacy.to_params(first_price=D(df["open"].iloc[0]), qty_step=filters.step_size)
-    rep, _ = run_legacy(df, params)
-    out = {"strategy": "legacy_v2", "grid_base": str(params.base_price), **rep.summary()}
+    if a.strategy == "v3":
+        from agent.backtest.v3_engine import run_v3
+        from agent.features import FeatureParams
+        from agent.risk import RiskParams
+
+        rep = run_v3(df, cfg.v3.to_params(filters.step_size, filters.min_notional),
+                     RiskParams(**cfg.risk.model_dump()), FeatureParams(**cfg.features.model_dump()),
+                     slippage_pct=cfg.backtest.slippage_pct)
+        out = {"strategy": "v3", **rep.summary()}
+    else:
+        if cfg.legacy is None:
+            print("Немає секції legacy у конфігу")
+            return 2
+        params = cfg.legacy.to_params(first_price=D(df["open"].iloc[0]), qty_step=filters.step_size)
+        rep, _ = run_legacy(df, params)
+        out = {"strategy": "legacy_v2", "grid_base": str(params.base_price), **rep.summary()}
     print(json.dumps(out, ensure_ascii=False, indent=2))
     if a.summary_md:
         Path(a.summary_md).write_text(_report_md(out, a), encoding="utf-8")
@@ -69,11 +79,14 @@ LABELS = {
     "trades": "Закритих угод", "win_rate_pct": "Виграшних, %", "profit_factor_closed": "Profit factor (закриті)",
     "max_dd_pct": "Макс. просадка, %", "avg_hold_h": "Сер. час у позиції, год", "max_hold_h": "Макс. час у позиції, год",
     "open_positions_at_end": "Відкритих позицій у кінці",
+    "exits": "Виходи (причина: к-сть)", "risk_vetoes": "Вето ризику", "gate_blocks": "Блоки фільтрів входу",
+    "kill_switch": "Kill switch", "risk_events": "Подій ризику",
 }
 
 
 def _report_md(out: dict, a) -> str:
-    rows = "\n".join(f"| {LABELS.get(k, k)} | {v} |" for k, v in out.items() if k != "strategy")
+    fmt = lambda v: ", ".join(f"{k}: {n}" for k, n in v.items()) or "—" if isinstance(v, dict) else v
+    rows = "\n".join(f"| {LABELS.get(k, k)} | {fmt(v)} |" for k, v in out.items() if k != "strategy")
     verdict = []
     try:
         if float(out["pnl_pct"]) < float(out["buy_and_hold_pct"]):

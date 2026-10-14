@@ -58,9 +58,71 @@ class LegacyCfg(BaseModel):
         )
 
 
+class V3FiltersCfg(BaseModel):
+    trend_block_pct: Decimal | None = Decimal("-3")
+    atr_min_pct: Decimal | None = Decimal("0.3")
+    atr_max_pct: Decimal | None = Decimal("4.0")
+
+
+class V3Cfg(BaseModel):
+    bots: int = Field(5, ge=1, le=50)
+    interval_atr: Decimal = Decimal("1.0")
+    budget_usdt_per_bot: Decimal = Decimal("100")
+    buy: PointCfg = PointCfg(limit_up=Decimal("1.0"), limit_bot=Decimal("-1.0"),
+                             action_up=Decimal("0.4"), action_bot=Decimal("0.1"))
+    sell: PointCfg = PointCfg(limit_up=Decimal("1.0"), limit_bot=Decimal("-1.0"),
+                              action_up=Decimal("0.1"), action_bot=Decimal("-0.4"))
+    min_edge_pct: Decimal = Decimal("0.15")
+    fee_pct: Decimal = Decimal("0.1")
+    k_stop_atr: Decimal = Decimal("3")
+    max_hold_h: int = 72
+    risk_per_trade_pct: Decimal = Decimal("0.5")
+    filters: V3FiltersCfg = V3FiltersCfg()
+
+    def to_params(self, qty_step: Decimal = Decimal("0.0001"), min_notional: Decimal = Decimal("5")):
+        from agent.strategy.v3 import AtrPoint, V3Params
+
+        return V3Params(
+            bots=self.bots, interval_atr=self.interval_atr, budget_usdt=self.budget_usdt_per_bot,
+            buy=AtrPoint(**self.buy.model_dump()), sell=AtrPoint(**self.sell.model_dump()),
+            min_edge_pct=self.min_edge_pct, fee_pct=self.fee_pct, k_stop_atr=self.k_stop_atr,
+            max_hold_h=self.max_hold_h, risk_per_trade_pct=self.risk_per_trade_pct,
+            qty_step=qty_step, min_notional=min_notional, **self.filters.model_dump(),
+        )
+
+
+class FeaturesCfg(BaseModel):
+    atr_tf: Literal["5m", "15m", "30m", "1h", "4h"] = "1h"
+    atr_len: int = 14
+    ema_len: int = 200
+    ema_slope_h: int = 24
+    anchor_h: int = 24
+
+
+class RiskCfg(BaseModel):
+    max_eth_share_pct: Decimal = Decimal("60")
+    daily_loss_pct: Decimal = Decimal("2")
+    max_dd_pct: Decimal = Decimal("10")
+    max_consecutive_losses: int = 5
+    losses_pause_h: int = 4
+    max_orders_per_hour: int = 20
+    max_move_1m_pct: Decimal = Decimal("3")
+    move_pause_min: int = 15
+    max_spread_pct: Decimal = Decimal("0.1")
+    max_open_risk_pct: Decimal = Decimal("2")
+
+
+class BacktestCfg(BaseModel):
+    slippage_pct: Decimal = Decimal("0.05")
+
+
 class Config(BaseModel):
     agent: AgentSection = AgentSection()
     legacy: LegacyCfg | None = None
+    v3: V3Cfg = V3Cfg()
+    features: FeaturesCfg = FeaturesCfg()
+    risk: RiskCfg = RiskCfg()
+    backtest: BacktestCfg = BacktestCfg()
 
 
 def apply_overrides(raw: dict, overrides: list[str]) -> dict:

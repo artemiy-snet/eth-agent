@@ -87,3 +87,21 @@ def test_config_overrides(tmp_path):
     p.write_text(open("config.example.yaml", encoding="utf-8").read(), encoding="utf-8")
     cfg = load_config(p, ["legacy.bots=7", "legacy.buy.limit_bot=-0.5", "legacy.sell_on_any_level=true"])
     assert cfg.legacy.bots == 7 and cfg.legacy.buy.limit_bot == Decimal("-0.5") and cfg.legacy.sell_on_any_level
+
+
+def test_v3_backtest_accounting_and_risk_wiring():
+    from agent.backtest.v3_engine import run_v3
+    from agent.features import FeatureParams
+    from agent.risk import RiskParams
+    from agent.strategy import v3
+
+    df = synthetic_klines(n=6000, vol=0.001)
+    rep = run_v3(df, v3.V3Params(trend_block_pct=None, atr_min_pct=None, atr_max_pct=None),
+                 RiskParams(max_dd_pct=D(50)), FeatureParams(atr_tf="15m", ema_len=20, anchor_h=4))
+    assert rep.start_equity == D(500)
+    # реалізований PnL + нереалізований = загальний
+    s = rep.summary()
+    assert abs(D(s["realized_pnl_usdt"]) + D(s["unrealized_pnl_usdt"]) - rep.pnl_usdt) < D("0.02")
+    assert sum(rep.extra["exits"].values()) == len(rep.trades)
+    # кожна угода закрита стопом не гірше ніж ~ (3 ATR + гепи) — тобто збитки обмежені
+    assert all(t.pnl_usdt > D(-20) for t in rep.trades)

@@ -29,3 +29,16 @@ class Intent:
     price: Decimal          # ціна, за якою стратегія прийняла рішення
     reason: str
     quote_qty: Decimal | None = None   # для купівлі «на суму» (quoteOrderQty)
+    stop: Decimal | None = None        # стоп-лосс для входу (ризик рахує від нього)
+
+
+@dataclass(frozen=True)
+class Fill:
+    """Підтверджене виконання (від біржі, paper-біржі або бектесту)."""
+
+    ts: int
+    bot_id: int
+    side: Side
+    qty: Decimal           # виконана кількість ETH
+    price: Decimal         # середня ціна виконання
+    fee_quote: Decimal     # комісія в USDT-еквіваленті

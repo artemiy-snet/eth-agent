@@ -17,26 +17,26 @@ on:
       strategy:
         description: "Стратегія"
         type: choice
-        options: [legacy_v2]
-        default: legacy_v2
+        options: [v3, legacy_v2]
+        default: v3
       bots:
         description: "Кількість ботів (порожньо = з конфігу)"
         required: false
         default: ""
       interval_pct:
-        description: "Крок сітки між ботами, %"
+        description: "Крок сітки між ботами (legacy: %, v3: ATR)"
         required: false
         default: ""
       limit_pct:
-        description: "Пороги точок ±% (limit_up / limit_bot для купівлі й продажу)"
+        description: "legacy: пороги ±%; v3: стоп у ATR (k_stop_atr)"
         required: false
         default: ""
       sell_on_any_level:
-        description: "isSellOnAnyLevel"
+        description: "legacy: isSellOnAnyLevel"
         type: boolean
         default: false
       extra:
-        description: "Додатково, через пробіл: legacy.step_sell_pct=0.5 legacy.greedy_buy=1"
+        description: "Додатково через пробіл, напр.: v3.max_hold_h=48 risk.max_dd_pct=15 v3.filters.trend_block_pct=-2"
         required: false
         default: ""
 
@@ -48,8 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -65,6 +65,7 @@ jobs:
           IN_LIMIT: ${{ inputs.limit_pct }}
           IN_ANY: ${{ inputs.sell_on_any_level }}
           IN_EXTRA: ${{ inputs.extra }}
+          IN_STRATEGY: ${{ inputs.strategy }}
         run: |
           python - <<'PY'
           import os, re
@@ -77,23 +78,28 @@ jobs:
           start = os.environ["IN_START"].strip() or f"{y0:04d}-{m0:02d}"
           ym = re.compile(r"^\d{4}-\d{2}$")
           assert ym.match(start) and ym.match(end), "формат YYYY-MM"
-          sets = []
+          sets = ["agent.mode=backtest"]
           num = re.compile(r"^-?\d+(\.\d+)?$")
           def add(key, val):
               val = val.strip()
               if val:
                   assert num.match(val), f"{key}: очікую число, отримав {val!r}"
                   sets.append(f"{key}={val}")
-          add("legacy.bots", os.environ["IN_BOTS"])
-          add("legacy.interval_pct", os.environ["IN_INTERVAL"])
+          v3 = os.environ["IN_STRATEGY"] == "v3"
+          sec = "v3" if v3 else "legacy"
+          add(f"{sec}.bots", os.environ["IN_BOTS"])
+          add("v3.interval_atr" if v3 else "legacy.interval_pct", os.environ["IN_INTERVAL"])
           lim = os.environ["IN_LIMIT"].strip().lstrip("+-")
-          if lim:
+          if lim and v3:
+              add("v3.k_stop_atr", lim)
+          elif lim:
               for side in ("buy", "sell"):
                   add(f"legacy.{side}.limit_up", lim)
                   add(f"legacy.{side}.limit_bot", "-" + lim)
-          sets.append(f"legacy.sell_on_any_level={os.environ['IN_ANY'].lower()}")
+          if not v3:
+              sets.append(f"legacy.sell_on_any_level={os.environ['IN_ANY'].lower()}")
           for item in os.environ["IN_EXTRA"].split():
-              assert re.match(r"^[a-z_.]+=[-\w.]+$", item), f"погане перевизначення: {item!r}"
+              assert re.match(r"^[a-z0-9_.]+=[-\w.]+$", item), f"погане перевизначення: {item!r}"
               sets.append(item)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"start={start}\nend={end}\n")
@@ -125,6 +131,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Параметри: \`${{ steps.args.outputs.sets }}\`" >> "$GITHUB_STEP_SUMMARY"
           python -c "import json;d=json.load(open('reports/backtest.json'));print('::notice title=Бектест ' + d['strategy'] + '::' + json.dumps(d, ensure_ascii=False))"
+          echo "::notice title=Параметри::${{ steps.args.outputs.sets }}"
 
       - uses: actions/upload-artifact@v4
         with:

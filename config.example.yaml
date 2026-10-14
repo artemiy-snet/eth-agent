@@ -22,3 +22,34 @@ legacy:
   greedy_sell: 0
   sell_on_any_level: false
   fee_pct: 0.1
+
+# v3 — точки дії в одиницях ATR, рухома сітка від максимуму за anchor_h годин,
+# стоп, часовий стоп, розмір позиції від ризику (Біблія, розділ 3.4 і 10.1).
+v3:
+  bots: 5
+  interval_atr: 1.0         # бот i зводиться після падіння на (1 + i×interval) ATR від максимуму
+  budget_usdt_per_bot: 100
+  buy:  { limit_up: 1.0, limit_bot: -1.0, action_up: 0.4, action_bot: 0.1 }
+  sell: { limit_up: 1.0, limit_bot: -1.0, action_up: 0.1, action_bot: -0.4 }
+  min_edge_pct: 0.15
+  fee_pct: 0.1
+  k_stop_atr: 3
+  max_hold_h: 72
+  risk_per_trade_pct: 0.5
+  filters: { trend_block_pct: -3, atr_min_pct: 0.3, atr_max_pct: 4.0 }
+
+features: { atr_tf: 1h, atr_len: 14, ema_len: 200, ema_slope_h: 24, anchor_h: 24 }
+
+risk:                       # розділ 5 Біблії
+  max_eth_share_pct: 60
+  daily_loss_pct: 2
+  max_dd_pct: 10            # kill switch; у бектесті після нього нових входів немає до кінця періоду
+  max_consecutive_losses: 5
+  losses_pause_h: 4
+  max_orders_per_hour: 20
+  max_move_1m_pct: 3
+  move_pause_min: 15
+  max_spread_pct: 0.1
+  max_open_risk_pct: 2      # НОВЕ: сума ризиків до стопів по всіх ботах ≤ 2 % капіталу
+
+backtest: { slippage_pct: 0.05 }

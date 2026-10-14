@@ -15,8 +15,8 @@ PAGE = """<!doctype html><html lang="uk"><head><meta charset="utf-8">
 :root{{--bg:#0f1115;--fg:#e8e8e8;--mut:#9aa0a6;--card:#181b21;--ok:#3fb950;--bad:#f85149;--warn:#d29922}}
 @media (prefers-color-scheme: light){{:root{{--bg:#f6f7f9;--fg:#15171a;--mut:#5f6368;--card:#fff}}}}
 body{{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}}
-h1{{font-size:20px;margin:0 0 4px}} .mut{{color:var(--mut)}} .card{{background:var(--card);border-radius:12px;padding:12px;margin:12px 0}}
-table{{width:100%;border-collapse:collapse;font-size:14px}} td,th{{padding:4px 6px;text-align:left;border-bottom:1px solid #8883}}
+h1{{font-size:20px;margin:0 0 4px}} .mut{{color:var(--mut)}} .card{{background:var(--card);border-radius:12px;padding:12px;margin:12px 0;overflow-x:auto}}
+table{{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}} td,th{{padding:4px 6px;text-align:left;border-bottom:1px solid #8883}}
 .big{{font-size:26px;font-weight:600}} .ok{{color:var(--ok)}} .bad{{color:var(--bad)}} .warn{{color:var(--warn)}}
 form{{display:inline}} button{{font-size:15px;padding:10px 14px;border-radius:10px;border:0;margin:4px 4px 0 0}}
 .stop{{background:var(--bad);color:#fff}} .flat{{background:#6e1b17;color:#fff}}
@@ -25,7 +25,7 @@ form{{display:inline}} button{{font-size:15px;padding:10px 14px;border-radius:10
 <div class="card"><div class="big">{price} USDT</div>
 <div>Капітал агента: <b>{equity}</b> із {start_equity} USDT · зв'язок: {conn}</div>
 <div>Стан: {killed}</div><div>Входи: {gate}</div></div>
-<div class="card"><b>Боти</b><table><tr><th>#</th><th>Фаза</th><th>USDT</th><th>ETH</th><th>Вхід</th><th>Стоп</th><th>Рівень зведення</th></tr>{bots}</table></div>
+<div class="card"><b>Боти</b><table><tr><th>#</th><th>Фаза</th><th>USDT</th><th>ETH</th><th>Вхід</th><th>Стоп</th><th>Рівень</th></tr>{bots}</table></div>
 <div class="card"><b>Ознаки</b><div class="mut">ATR {atr} ({atr_pct} %) · нахил EMA200 {ema_slope_pct} % · максимум {anchor_high}</div></div>
 <div class="card"><b>Останні події</b><table>{events}</table></div>
 <div class="card"><b>Останні угоди</b><table>{trades}</table></div>

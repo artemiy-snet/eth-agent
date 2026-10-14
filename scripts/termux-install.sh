@@ -1,10 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Встановлення ETH-Агента в Termux (Android). Запуск з теки проєкту: bash scripts/termux-install.sh
+# pip у Termux НЕ оновлюємо (це ламає пакет python); після оновлення Python — завжди "python -m pip".
 set -e
 pkg update -y
+pkg upgrade -y
 pkg install -y python
-pip install --upgrade pip
-pip install pyyaml
+python -m pip install pyyaml
 mkdir -p ~/.eth-agent
 if [ ! -f ~/.eth-agent/secrets.env ]; then
   cat > ~/.eth-agent/secrets.env <<'EOF'

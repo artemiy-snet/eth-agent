@@ -124,6 +124,7 @@ jobs:
           cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Параметри: \`${{ steps.args.outputs.sets }}\`" >> "$GITHUB_STEP_SUMMARY"
+          python -c "import json;d=json.load(open('reports/backtest.json'));print('::notice title=Бектест ' + d['strategy'] + '::' + json.dumps(d, ensure_ascii=False))"
 
       - uses: actions/upload-artifact@v4
         with:

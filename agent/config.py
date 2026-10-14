@@ -92,7 +92,7 @@ class V3Cfg(BaseModel):
 
 
 class FeaturesCfg(BaseModel):
-    atr_tf: Literal["5m", "15m", "30m", "1h", "4h"] = "1h"
+    atr_tf: Literal["5m", "15m", "30m", "1h", "4h", "1d"] = "1h"
     atr_len: int = 14
     ema_len: int = 200
     ema_slope_h: int = 24

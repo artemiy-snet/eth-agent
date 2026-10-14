@@ -17,6 +17,11 @@ on:
         description: "Місяців навчання у вікні"
         required: false
         default: "3"
+      grid:
+        description: "Сітка гіпотез"
+        type: choice
+        options: [v2, v1]
+        default: v2
       extra:
         description: "Спільні перевизначення для всіх варіантів, напр.: risk.max_dd_pct=15"
         required: false
@@ -28,7 +33,7 @@ permissions:
 jobs:
   walkforward:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -81,7 +86,7 @@ jobs:
           mkdir -p reports
           eth-agent walkforward --config config.example.yaml \
             --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} \
-            --train ${{ steps.args.outputs.train }} ${{ steps.args.outputs.sets }} \
+            --train ${{ steps.args.outputs.train }} --grid ${{ inputs.grid }} ${{ steps.args.outputs.sets }} \
             --summary-md reports/walkforward.md
           cat reports/walkforward.md >> "$GITHUB_STEP_SUMMARY"
           python - <<'PY'

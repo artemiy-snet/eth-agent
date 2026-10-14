@@ -47,6 +47,30 @@ class Variant:
     overrides: list[str]          # формат --set: "v3.k_stop_atr=2"
 
 
+def grid_v2() -> list[Variant]:
+    """Сітка №2 (після walk-forward №1): лише повільні ATR, ширші виходи, суворіший фільтр тренду.
+    1h відкинуто: на році 2025-10…2026-09 усі 1h-варіанти були гірші за 4h."""
+    exits = {
+        "E2": ["v3.sell.limit_up=2.0", "v3.sell.action_up=0.5"],
+        "E3": ["v3.sell.limit_up=3.0", "v3.sell.action_up=1.0"],
+        "E4": ["v3.sell.limit_up=4.0", "v3.sell.action_up=1.5"],   # зведення +4 ATR, відкат 2,5
+    }
+    out = []
+    for tf in ("4h", "1d"):
+        for k in ("2", "3", "4"):
+            for en, ex in exits.items():
+                for tb in ("-3", "-1"):
+                    out.append(Variant(f"{tf}·stop{k}·{en}·tr{tb}",
+                                       [f"features.atr_tf={tf}", f"v3.k_stop_atr={k}", *ex,
+                                        f"v3.filters.trend_block_pct={tb}"]))
+    out.append(Variant(BASELINE, ["features.atr_tf=1h", "v3.k_stop_atr=3", "v3.sell.limit_up=1.0",
+                                  "v3.sell.action_up=0.1"]))
+    return out
+
+
+GRIDS = {"v1": None, "v2": grid_v2}
+
+
 def default_grid() -> list[Variant]:
     """Невелика явна сітка гіпотез (див. журнал бектестів). Кожен варіант — гіпотеза, а не перебір усього."""
     exits = {
@@ -63,6 +87,7 @@ def default_grid() -> list[Variant]:
 
 
 BASELINE = "1h·stop3·E1"
+GRIDS["v1"] = default_grid
 
 
 def _init(df: pd.DataFrame, feats: dict[str, pd.DataFrame]) -> None:

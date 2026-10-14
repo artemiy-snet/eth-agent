@@ -82,7 +82,7 @@ def _cmd_walkforward(a) -> int:
     from agent.config import apply_overrides
     raw = apply_overrides(raw, a.set)
     df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
-    res = wf.run_grid(df, raw, wf.default_grid(), workers=a.workers)
+    res = wf.run_grid(df, raw, wf.GRIDS[a.grid](), workers=a.workers)
     r = wf.walk_forward(res, train=a.train, test=a.test)
     md = wf.report_md(r, a.start, a.end)
     print(md)
@@ -146,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--train", type=int, default=3)
     w.add_argument("--test", type=int, default=1)
     w.add_argument("--workers", type=int, default=None)
+    w.add_argument("--grid", default="v2", choices=["v1", "v2"])
     w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
     w.add_argument("--summary-md")
 

@@ -1,0 +1,24 @@
+# Скопіюйте в config.yaml (він у .gitignore) і змініть під себе.
+# Ключі API тут НЕ зберігаються — лише через «Налаштування» панелі (Біблія, розділ 12).
+
+agent:
+  pair: ETHUSDT
+  mode: backtest          # backtest | paper | shadow | live
+  params_version: v1
+  data_dir: data
+
+# Параметри v2.02 для legacy_v2. Реальні налаштування v2.02 не збереглися,
+# тому стартові значення взяті із заводських значень збірки (пороги ±0,3 %, вікно ±0,1 %)
+# і масиву з Біблії (5 ботів × 1,5 %, 100 USDT). Це відправна точка для бектесту, не рекомендація.
+legacy:
+  base_price: null        # null = сітка центрується на першій ціні періоду
+  bots: 5
+  interval_pct: 1.5
+  budget_usdt_per_bot: 100
+  step_sell_pct: 0.3      # точка продажу на +0,3 % від рівня бота
+  buy:  { limit_up: 0.3, limit_bot: -0.3, action_up: 0.1, action_bot: -0.1 }
+  sell: { limit_up: 0.3, limit_bot: -0.3, action_up: 0.1, action_bot: -0.1 }
+  greedy_buy: 0
+  greedy_sell: 0
+  sell_on_any_level: false
+  fee_pct: 0.1

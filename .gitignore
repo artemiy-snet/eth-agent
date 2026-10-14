@@ -1,0 +1,13 @@
+# Дані, секрети, локальний конфіг — ніколи не в git (Біблія, розділ 12)
+/data/
+.env
+*.enc
+config.yaml
+secrets*
+
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+reports/

@@ -1,8 +1,6 @@
 """Юніт-тести переходів стану legacy_v2 (Біблія, розділ 11, етап 2)."""
 
-from decimal import Decimal
 
-import pytest
 
 from agent.money import D
 from agent.strategy import legacy_v2 as lv2

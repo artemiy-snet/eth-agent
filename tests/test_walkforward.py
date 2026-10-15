@@ -35,7 +35,6 @@ def test_min_train_trades_respected():
 
 def test_grid_runs_end_to_end_on_synthetic():
     import numpy as np
-    import pandas as pd
 
     from agent.learning import walkforward as wf
     from tests.test_data_and_backtest import synthetic_klines

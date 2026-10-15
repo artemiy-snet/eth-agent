@@ -62,6 +62,25 @@ class Client:
 
     # --- транспорт -----------------------------------------------------------------------
     def _request(self, method: str, path: str, params: dict | None = None, signed: bool = False):
+        """Запит з захистом від бану: на 429/418 пауза за Retry-After; на -1021 (годинник) — ресинхронізація й повтор."""
+        if time.time() < getattr(self, "blocked_until", 0):
+            raise NetworkError(f"пауза після ліміту запитів Binance ще {int(self.blocked_until - time.time())} с")
+        try:
+            return self._request_once(method, path, params, signed)
+        except BinanceError as e:
+            if e.http_status in (418, 429):
+                self.blocked_until = time.time() + max(60, int(getattr(e, "retry_after", 0) or 0))
+                raise NetworkError(f"ліміт запитів Binance (HTTP {e.http_status}) — пауза") from None
+            if e.code == -1021 and signed and not getattr(self, "_resyncing", False):
+                self._resyncing = True
+                try:
+                    self.sync_time()
+                    return self._request_once(method, path, params, signed)
+                finally:
+                    self._resyncing = False
+            raise
+
+    def _request_once(self, method: str, path: str, params: dict | None = None, signed: bool = False):
         params = {k: v for k, v in (params or {}).items() if v is not None}
         headers = {"User-Agent": "eth-agent/0.1"}
         if signed:
@@ -88,9 +107,12 @@ class Client:
             body = e.read().decode(errors="replace")
             try:
                 j = json.loads(body)
-                raise BinanceError(e.code, j.get("code"), j.get("msg", body)) from None
             except ValueError:
-                raise BinanceError(e.code, None, body[:200]) from None
+                j = None
+            err = BinanceError(e.code, j.get("code") if isinstance(j, dict) else None,
+                               j.get("msg", body) if isinstance(j, dict) else body[:200])
+            err.retry_after = (e.headers or {}).get("Retry-After") if hasattr(e, "headers") else None
+            raise err from None
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             raise NetworkError(str(e)) from None
 

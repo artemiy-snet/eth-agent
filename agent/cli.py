@@ -154,6 +154,8 @@ def _cmd_live(a) -> int:
         print("Kill switch знято. Запусти агента знову.")
         return 0
     srv = serve(agent, s.status_port, config_path=cfg)
+    from agent import __version__
+    print(f"ETH-Агент v{__version__} · режим {s.mode}")
     print(f"Панель: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")
     res = agent.run(stop_after_s=a.minutes * 60 if a.minutes else None)
     srv.shutdown()

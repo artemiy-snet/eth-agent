@@ -1,6 +1,5 @@
 """Живий агент на фейковій біржі: подвійний сигнал, стоп на біржі, вихід, STOP, відновлення стану."""
 
-from decimal import Decimal
 
 import pytest
 
@@ -476,3 +475,40 @@ def test_binance_resolves_ipv4_only():
         binance._orig_getaddrinfo = orig
     e = binance.BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
     assert "IP" in str(e) and "curl -4" in str(e)
+
+
+def test_client_backs_off_on_rate_limit_and_resyncs_clock(monkeypatch):
+    import pytest as _pt
+
+    from agent.live import binance as bn
+    c = bn.Client("https://x", "k", "s")
+    calls = []
+
+    def once(method, path, params=None, signed=False):
+        calls.append(path)
+        if path == "/limited":
+            e = bn.BinanceError(429, -1003, "Too many requests")
+            e.retry_after = "120"
+            raise e
+        if path == "/clock" and len([p for p in calls if p == "/clock"]) == 1:
+            raise bn.BinanceError(400, -1021, "Timestamp outside recvWindow")
+        if path == "/api/v3/time":
+            return {"serverTime": 0}
+        return {"ok": True}
+    monkeypatch.setattr(c, "_request_once", once)
+    with _pt.raises(bn.NetworkError):
+        c._request("GET", "/limited")
+    with _pt.raises(bn.NetworkError):                      # під час паузи — навіть не стукаємо
+        c._request("GET", "/anything")
+    assert calls.count("/anything") == 0
+    c.blocked_until = 0
+    assert c._request("GET", "/clock", signed=True) == {"ok": True} and "/api/v3/time" in calls
+
+
+def test_trend_without_breakout_needs_only_24h_anchor():
+    import yaml
+
+    from agent.live.settings import build_sleeves
+    raw = yaml.safe_load(open("config.portfolio.yaml", encoding="utf-8"))
+    sl = {s.name: s for s in build_sleeves(raw)[0]}
+    assert sl["C"].features.anchor_h == 24

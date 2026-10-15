@@ -140,7 +140,9 @@ def build_sleeves(raw: dict) -> tuple[tuple, Decimal]:
         elif sl["strategy"] == "trend":
             tp = trend_params(r.get("trend"))
             tp = dataclasses.replace(tp, budget_usdt=share / tp.bots)
-            fp = dataclasses.replace(fp, atr_tf="1d", anchor_h=int(_merge(TREND_DEFAULTS, r.get("trend"))["breakout_days"]) * 24)
+            # якір (максимум за N днів) потрібен лише для пробою; без пробою — 24 год (менше запитів 1m-свічок)
+            fp = dataclasses.replace(fp, atr_tf="1d",
+                                     anchor_h=int(_merge(TREND_DEFAULTS, r.get("trend"))["breakout_days"]) * 24 if tp.breakout else 24)
             out.append(Sleeve(name, "trend", tp, risk_params(r.get("risk")), fp))
         else:
             vp = v3_params(r.get("v3"))

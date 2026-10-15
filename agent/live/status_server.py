@@ -120,7 +120,7 @@ def overview(agent) -> dict:
         pass
     an = getattr(agent, "analyst", None)
     return {
-        "now": now, "mode": s0.get("mode"), "pair": s0.get("pair", "ETHUSDT"), "price": s0.get("price"),
+        "now": now, "version": __import__("agent").__version__, "mode": s0.get("mode"), "pair": s0.get("pair", "ETHUSDT"), "price": s0.get("price"),
         "bid": s0.get("bid"), "ask": s0.get("ask"), "connected": s0.get("connected", False),
         "equity": sum(float(x.get("equity") or 0) for x in sts),
         "start_equity": sum(float(x.get("start_equity") or 0) for x in sts),

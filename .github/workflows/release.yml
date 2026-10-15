@@ -1,0 +1,43 @@
+name: release
+
+# Бета-збірка для телефона: агент, конфіги, скрипти, документи — без тестів і CI.
+# Запуск: тег v* (git tag v0.9.0-beta && git push --tags) або вручну з Actions.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Тести перед випуском
+        run: |
+          pip install -e ".[research,dev]"
+          pytest -q
+      - name: Збірка ZIP
+        run: |
+          VER=$(python -c "import agent; print(agent.__version__)")
+          mkdir -p build/eth-agent-main
+          cp -r agent scripts docs config.example.yaml config.portfolio.yaml pyproject.toml README.md build/eth-agent-main/
+          find build -name "__pycache__" -prune -exec rm -rf {} +
+          (cd build && zip -qr ../eth-agent-beta.zip eth-agent-main)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          unzip -l eth-agent-beta.zip | tail -1
+      - name: Реліз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in v*) ;; *) TAG="v${VER}";; esac
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --title "ETH-Агент $TAG" \
+            --notes "Бета-збірка для телефона (Termux). Інструкція: docs/PHONE.md. Без тестів і CI."
+          gh release upload "$TAG" eth-agent-beta.zip --clobber

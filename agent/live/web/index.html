@@ -45,6 +45,7 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--page)
 .bar{display:flex;align-items:center;gap:10px;height:52px}
 .logo{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
 @media (max-width:420px){.logo span{display:none}}
+@media (max-width:560px){#ver{display:none}}
 .logo svg{width:22px;height:22px}
 .chip{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--raise);color:var(--ink-2)}
 .chip.paper{color:var(--s1)} .chip.testnet{color:var(--s4)} .chip.live{background:var(--crit);color:#fff;animation:blink 1.6s ease-in-out infinite}
@@ -187,6 +188,7 @@ ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--s7)" d="M12 2 5 12.2 12 16l7-3.8z"/><path fill="var(--s1)" d="M12 17.4 5 13.6 12 22l7-8.4z" opacity=".85"/></svg>
       <span data-i18n="app">ETH-Агент</span>
     </div>
+    <span class="small muted" id="ver"></span>
     <span class="chip" id="modeChip">—</span>
     <span class="heart" id="heart" aria-live="polite"><span class="dot on" id="connDot"></span><span id="heartTxt">…</span></span>
     <div class="spacer"></div>
@@ -430,6 +432,7 @@ function drawAll(){drawPrice();drawEquity();if((store("tab")||"ov")==="ai")drawA
 // ---------- overview render ----------
 function renderOverview(){const o=S.ov;if(!o)return;
   const chip=$("#modeChip");chip.textContent=(o.mode||"—").toUpperCase();chip.className="chip "+(o.mode||"");
+  $("#ver").textContent=o.version?"v"+o.version:"";
   renderPulse();
   // alerts
   const al=$("#alerts");al.textContent="";

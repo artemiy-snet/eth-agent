@@ -11,7 +11,7 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 
-from agent.backtest.engine import TICK_SECONDS, Report, Trade, ticks_from_klines
+from agent.backtest.engine import Report, Trade, ticks_from_klines
 from agent.features import FeatureParams, compute_features
 from agent.money import HUNDRED, ZERO, D
 from agent.risk import RiskContext, RiskGuard, RiskParams

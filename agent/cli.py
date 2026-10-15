@@ -116,9 +116,13 @@ def _cmd_portfolio(a) -> int:
 
     raw = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) or {}
     df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
-    presets = None if a.preset == "all" else [a.preset]
+    from agent.strategy.sleeves import GROUPS
+    presets = GROUPS.get(a.preset) or [a.preset]
     r = pf.run_all(df, raw, presets, workers=os.cpu_count())
     md = pf.report_md(r, a.start, a.end)
+    if a.preset == "macro":
+        from agent.backtest import event_study as es
+        md += "\n" + es.report_md(es.study(df, 24, 24), 24, 24) + "\n" + es.report_md(es.study(df, 24, 2), 24, 2)
     print(md)
     if a.summary_md:
         Path(a.summary_md).write_text(md, encoding="utf-8")

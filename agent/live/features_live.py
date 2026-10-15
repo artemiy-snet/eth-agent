@@ -66,6 +66,9 @@ def compute(k_atr: list[Candle], k_1h: list[Candle], k_1m: list[Candle], now_ms:
         if ema_d and not math.isnan(ema_d[-1]):
             dist = (cd[-1][4] / ema_d[-1] - 1) * 100
 
+    from agent.features.calendar import proximity
+    ev_in, ev_ago = proximity(now_ms, p.event_kinds) if p.event_kinds else (None, None)
+
     dec = lambda x: None if x is None or math.isnan(x) else D(f"{x:.6f}")
     return Features(atr=dec(atr), atr_pct=dec(atr_pct), ema_slope_pct=dec(slope), anchor_high=dec(anchor),
-                    ema_dist_pct=dec(dist)), ret_1m
+                    ema_dist_pct=dec(dist), event_in_h=ev_in, event_ago_h=ev_ago), ret_1m

@@ -32,6 +32,9 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
         feats = compute_features(df, fp)
     fmap = {int(m): i for i, m in enumerate(feats["minute"].to_numpy())}
     cols = {c: feats[c].to_numpy() for c in ("atr", "atr_pct", "ema_slope_pct", "anchor_high", "ret_1m_pct", "ema_dist_pct")}
+    ev_in = feats["event_in_h"].to_numpy() if "event_in_h" in feats else None
+    ev_ago = feats["event_ago_h"].to_numpy() if "event_ago_h" in feats else None
+    _fl = lambda a, i: None if a is None or np.isnan(a[i]) else float(a[i])
 
     state = strategy.init_state(p)
     risk = RiskGuard(rp)
@@ -61,7 +64,8 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
                 f = v3.Features(atr=_dec(cols["atr"][i]), atr_pct=_dec(cols["atr_pct"][i]),
                                 ema_slope_pct=_dec(cols["ema_slope_pct"][i]),
                                 anchor_high=_dec(cols["anchor_high"][i]),
-                                ema_dist_pct=_dec(cols["ema_dist_pct"][i]))
+                                ema_dist_pct=_dec(cols["ema_dist_pct"][i]),
+                                event_in_h=_fl(ev_in, i), event_ago_h=_fl(ev_ago, i))
                 mv = _dec(cols["ret_1m_pct"][i])
                 if mv is not None:
                     risk.on_price_move(minute, mv)

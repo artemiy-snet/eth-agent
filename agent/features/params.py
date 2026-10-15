@@ -16,3 +16,4 @@ class FeatureParams:
     ema_slope_h: int = 24
     anchor_h: int = 24
     regime_ema_days: int = 200      # режим: ціна відносно EMA денних закриттів
+    event_kinds: str = "fomc,cpi"   # макроподії для гейту (agent/features/calendar.py)

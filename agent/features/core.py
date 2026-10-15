@@ -8,6 +8,7 @@
   anchor_high  — максимум ціни за anchor_h годин (за закритими 1m-свічками)
   ret_1m_pct   — зміна ціни за останню закриту хвилину, % (для запобіжника «рух > 3 %»)
   ema_dist_pct — останнє денне закриття відносно EMA(regime_ema_days) денних закриттів, %
+  event_in_h   — годин до наступної запланованої макроподії (FOMC/CPI), event_ago_h — після останньої
 
 Ознаки — float: це не гроші, а вимірювання. Гроші лишаються Decimal.
 """
@@ -73,4 +74,20 @@ def compute_features(df: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd
     out = out.merge(_asof(minutes, h, ["ema_slope_pct"]), on="minute")
     out = out.merge(_asof(minutes, d, ["ema_dist_pct"]), on="minute")
     out = out.merge(_asof(minutes, m1c, ["anchor_high", "ret_1m_pct"]), on="minute")
+    out["event_in_h"], out["event_ago_h"] = event_columns(out["minute"].to_numpy(), p.event_kinds)
     return out
+
+
+def event_columns(minute_ms: np.ndarray, kinds: str) -> tuple[np.ndarray, np.ndarray]:
+    """Векторно, та сама семантика, що calendar.proximity (календар відомий заздалегідь — це не look-ahead)."""
+    from agent.features.calendar import event_times
+
+    ts = np.array(event_times(kinds), dtype="int64")
+    m = minute_ms.astype("int64")
+    if not len(ts):
+        nan = np.full(len(m), np.nan)
+        return nan, nan.copy()
+    i = np.searchsorted(ts, m, side="left")
+    nxt = np.where(i < len(ts), (ts[np.minimum(i, len(ts) - 1)] - m) / 3_600_000, np.nan)
+    prev = np.where(i > 0, (m - ts[np.maximum(i - 1, 0)]) / 3_600_000, np.nan)
+    return nxt, prev

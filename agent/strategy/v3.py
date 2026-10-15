@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 
+from agent.features.calendar import in_window
 from agent.money import HUNDRED, ZERO, D, floor_to_step
 from agent.strategy.types import Fill, Intent, Side, Tick
 
@@ -64,6 +65,8 @@ class V3Params:
     atr_min_pct: Decimal | None = D("0.3")
     atr_max_pct: Decimal | None = D("4.0")
     regime_min_pct: Decimal | None = None       # входи лише коли ціна ≥ EMA200d × (1 + x/100); None — вимкнено
+    event_before_h: int | None = None           # не входити за N год до FOMC/CPI; None — вимкнено
+    event_after_h: int | None = None            # і N год після
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,8 @@ class Features:
     ema_slope_pct: Decimal | None = None
     anchor_high: Decimal | None = None
     ema_dist_pct: Decimal | None = None      # режим: ціна відносно 200-денної EMA, %
+    event_in_h: float | None = None          # годин до наступної макроподії (календар, agent/features/calendar.py)
+    event_ago_h: float | None = None         # годин після останньої
 
 
 @dataclass
@@ -123,6 +128,8 @@ def entry_gate(f: Features, p: V3Params) -> str | None:
         return "atr_high"
     if p.regime_min_pct is not None and (f.ema_dist_pct is None or f.ema_dist_pct < p.regime_min_pct):
         return "regime_down"
+    if in_window(f.event_in_h, f.event_ago_h, p.event_before_h, p.event_after_h):
+        return "macro_event"
     return None
 
 

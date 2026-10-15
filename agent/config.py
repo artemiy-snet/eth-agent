@@ -63,6 +63,8 @@ class V3FiltersCfg(BaseModel):
     atr_min_pct: Decimal | None = Decimal("0.3")
     atr_max_pct: Decimal | None = Decimal("4.0")
     regime_min_pct: Decimal | None = None
+    event_before_h: int | None = None
+    event_after_h: int | None = None
 
 
 class V3Cfg(BaseModel):
@@ -105,6 +107,9 @@ class TrendCfg(BaseModel):
     regime_exit: bool = True
     alloc_pct: Decimal | None = None
     breakout: bool = True
+    event_bots: int = 0
+    event_before_h: int | None = None
+    event_after_h: int | None = None
     fee_pct: Decimal = Decimal("0.1")
 
     def to_params(self, qty_step: Decimal = Decimal("0.0001"), min_notional: Decimal = Decimal("5")):
@@ -113,7 +118,8 @@ class TrendCfg(BaseModel):
         return TrendParams(bots=self.bots, budget_usdt=self.budget_usdt, k_stop_atr=self.k_stop_atr,
                            k_trail_atr=self.k_trail_atr, risk_per_trade_pct=self.risk_per_trade_pct,
                            regime_min_pct=self.regime_min_pct, regime_exit=self.regime_exit,
-                           alloc_pct=self.alloc_pct, breakout=self.breakout,
+                           alloc_pct=self.alloc_pct, breakout=self.breakout, event_bots=self.event_bots,
+                           event_before_h=self.event_before_h, event_after_h=self.event_after_h,
                            fee_pct=self.fee_pct, qty_step=qty_step, min_notional=min_notional)
 
 
@@ -124,6 +130,7 @@ class FeaturesCfg(BaseModel):
     ema_slope_h: int = 24
     anchor_h: int = 24
     regime_ema_days: int = 200
+    event_kinds: str = "fomc,cpi"
 
 
 class RiskCfg(BaseModel):

@@ -16,8 +16,8 @@ on:
       preset:
         description: "Портфель"
         type: choice
-        options: [all, поточний, обережний, збалансований, агресивний, лише_режим]
-        default: all
+        options: [base, macro, поточний, обережний, збалансований, агресивний, лише_режим]
+        default: base
 
 permissions:
   contents: read

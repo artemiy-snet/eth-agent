@@ -21,15 +21,17 @@ V3_DEFAULTS = {
     "sell": {"limit_up": "2.0", "limit_bot": "-1.0", "action_up": "0.5", "action_bot": "-0.4"},
     "min_edge_pct": "0.15", "fee_pct": "0.1", "k_stop_atr": "2", "max_hold_h": 72,
     "risk_per_trade_pct": "0.5",
-    "filters": {"trend_block_pct": "-3", "atr_min_pct": "0.3", "atr_max_pct": "4.0", "regime_min_pct": None},
+    "filters": {"trend_block_pct": "-3", "atr_min_pct": "0.3", "atr_max_pct": "4.0", "regime_min_pct": None,
+                "event_before_h": None, "event_after_h": None},
 }
 FEATURE_DEFAULTS = {"atr_tf": "1d", "atr_len": 14, "ema_len": 200, "ema_slope_h": 24, "anchor_h": 24,
-                    "regime_ema_days": 200}
+                    "regime_ema_days": 200, "event_kinds": "fomc,cpi"}
 
 
 TREND_DEFAULTS = {"bots": 1, "budget_usdt": "500", "breakout_days": 20, "k_stop_atr": "3", "k_trail_atr": "3",
                   "risk_per_trade_pct": "0.5", "regime_min_pct": "0", "regime_exit": True, "alloc_pct": None,
-                  "breakout": True, "fee_pct": "0.1"}
+                  "breakout": True, "fee_pct": "0.1",
+                  "event_bots": 0, "event_before_h": None, "event_after_h": None}
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,10 @@ def _dec_or_none(x):
     return None if x is None else D(x)
 
 
+def _int_or_none(x):
+    return None if x is None else int(x)
+
+
 def v3_params(raw: dict, qty_step: Decimal = D("0.0001"), min_notional: Decimal = D("5")) -> V3Params:
     c = _merge(V3_DEFAULTS, raw)
     pt = lambda d: AtrPoint(D(d["limit_up"]), D(d["limit_bot"]), D(d["action_up"]), D(d["action_bot"]))
@@ -81,6 +87,7 @@ def v3_params(raw: dict, qty_step: Decimal = D("0.0001"), min_notional: Decimal 
         risk_per_trade_pct=D(c["risk_per_trade_pct"]), qty_step=qty_step, min_notional=min_notional,
         trend_block_pct=_dec_or_none(f.get("trend_block_pct")), atr_min_pct=_dec_or_none(f.get("atr_min_pct")),
         atr_max_pct=_dec_or_none(f.get("atr_max_pct")), regime_min_pct=_dec_or_none(f.get("regime_min_pct")),
+        event_before_h=_int_or_none(f.get("event_before_h")), event_after_h=_int_or_none(f.get("event_after_h")),
     )
 
 
@@ -89,7 +96,9 @@ def trend_params(raw: dict | None) -> TrendParams:
     return TrendParams(bots=int(c["bots"]), budget_usdt=D(c["budget_usdt"]), k_stop_atr=D(c["k_stop_atr"]),
                        k_trail_atr=D(c["k_trail_atr"]), risk_per_trade_pct=D(c["risk_per_trade_pct"]),
                        regime_min_pct=_dec_or_none(c["regime_min_pct"]), regime_exit=bool(c["regime_exit"]),
-                       alloc_pct=_dec_or_none(c["alloc_pct"]), breakout=bool(c["breakout"]), fee_pct=D(c["fee_pct"]))
+                       alloc_pct=_dec_or_none(c["alloc_pct"]), breakout=bool(c["breakout"]), fee_pct=D(c["fee_pct"]),
+                       event_bots=int(c["event_bots"]), event_before_h=_int_or_none(c["event_before_h"]),
+                       event_after_h=_int_or_none(c["event_after_h"]))
 
 
 def build_sleeves(raw: dict) -> tuple[tuple, Decimal]:
@@ -135,7 +144,7 @@ def feature_params(raw: dict | None) -> FeatureParams:
     c = _merge(FEATURE_DEFAULTS, raw)
     return FeatureParams(atr_tf=str(c["atr_tf"]), atr_len=int(c["atr_len"]), ema_len=int(c["ema_len"]),
                          ema_slope_h=int(c["ema_slope_h"]), anchor_h=int(c["anchor_h"]),
-                         regime_ema_days=int(c["regime_ema_days"]))
+                         regime_ema_days=int(c["regime_ema_days"]), event_kinds=str(c["event_kinds"] or ""))
 
 
 def load(path: Path, mode: str | None = None) -> LiveSettings:

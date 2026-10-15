@@ -10,6 +10,9 @@
   * Стоп: вхід − k_stop × ATR(1d); далі трейлінг «люстра»: максимум з моменту входу − k_trail × ATR.
     Стоп лише піднімається.
   * Вихід також, якщо режим зламався (ціна нижче EMA200d) і regime_exit = True.
+  * Макроподії: останні event_bots ботів «чутливі» — за event_before_h год до FOMC/CPI вони продають
+    і не входять до event_after_h год після події. Так частка рукава (напр. половина при bots=2)
+    стоїть у USDT на час події, решта тримає позицію.
 
 Використовує той самий стан і виконання, що й v3 (BotV3, on_fill, on_reject) — бектест, paper
 і ризик-модуль працюють без змін.
@@ -20,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from agent.features.calendar import in_window
 from agent.money import D, floor_to_step
 from agent.strategy import v3
 from agent.strategy.types import Intent, Side, Tick
@@ -43,6 +47,9 @@ class TrendParams:
     min_notional: Decimal = D("5")
     alloc_pct: Decimal | None = None      # фіксована частка капіталу замість ризик-розміру (режимне утримання)
     breakout: bool = True                 # False — вхід лише за режимом, без пробою максимуму
+    event_bots: int = 0                   # скільки останніх ботів виходять у USDT перед макроподією
+    event_before_h: int | None = None
+    event_after_h: int | None = None
     # сумісність з position_qty з v3
     min_edge_pct: Decimal = D("0")
 
@@ -64,11 +71,13 @@ def step(state: V3State, tick: Tick, f: Features, p: TrendParams) -> tuple[V3Sta
     blocked: list[tuple[int, str]] = []
     px = tick.price
     capital = state.equity(px)
+    event_now = p.event_bots > 0 and in_window(f.event_in_h, f.event_ago_h, p.event_before_h, p.event_after_h)
     for b in state.bots:
+        sensitive = event_now and b.bot_id >= p.bots - p.event_bots
         if b.phase is Phase.FLAT:
             if p.breakout and (f.anchor_high is None or px <= f.anchor_high):
                 continue
-            why = entry_gate(f, p)
+            why = "macro_event" if sensitive else entry_gate(f, p)
             if why:
                 blocked.append((b.bot_id, why))
                 continue
@@ -94,6 +103,8 @@ def step(state: V3State, tick: Tick, f: Features, p: TrendParams) -> tuple[V3Sta
                 reason = "trail"
             elif p.regime_exit and f.ema_dist_pct is not None and f.ema_dist_pct < 0:
                 reason = "regime"
+            elif sensitive:
+                reason = "event"
             if reason:
                 qty = floor_to_step(b.eth, p.qty_step)
                 if qty > 0:

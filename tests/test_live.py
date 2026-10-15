@@ -551,3 +551,16 @@ def test_claude_truncated_reply_is_error(monkeypatch):
         {"content": [{"type": "text", "text": '{"a": '}], "stop_reason": "max_tokens"}).encode()))
     with _pt.raises(cl.ClaudeError, match="обрізана"):
         cl.complete("k", "m", "s", "u")
+
+
+def test_fresh_warnings_drops_resolved_order_errors():
+    from agent.live.runner import fresh_warnings
+    h = 3_600_000
+    now = 10 * h
+    ev = [(now - 1 * h, "INFO", "fill", "куплено"),
+          (now - 2 * h, "WARN", "order", "code=-2015"),       # до fill → розв'язано
+          (now - 0.5 * h, "WARN", "market", "дані застаріли"),  # свіже
+          (now - 8 * h, "ERROR", "crash", "старе")]             # поза вікном
+    r = fresh_warnings(ev, now)
+    assert [w["kind"] for w in r["recent_warnings"]] == ["market"]
+    assert r["last_fill_min_ago"] == 60

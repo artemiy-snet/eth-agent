@@ -415,8 +415,8 @@ def book_for_analyst(agents: list, journal) -> dict:
         })
     trades = [{"bot": t[0], "entry_px": t[3], "exit_px": t[4], "pnl": t[6], "reason": t[7]}
               for t in journal.recent_trades(10)]
-    warn = [m for _, lvl, _, m in journal.recent_events(40) if lvl in ("WARN", "ERROR")][:8]
-    out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades, "recent_warnings": warn}
+    out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades}
+    out.update(fresh_warnings(journal.recent_events(300), int(time.time() * 1000)))
     ai = ai_agent(agents)
     if ai is not None and ai.m.bid > 0:
         from agent.strategy import ai_trader as at
@@ -432,6 +432,21 @@ def book_for_analyst(agents: list, journal) -> dict:
             "stop_range_pct": [f"{lo:.2f}", f"{hi:.2f}"], "closed_trades": len(pnls),
             "pnl_total": f"{sum(pnls, ZERO):.2f}"}
     return out
+
+
+def fresh_warnings(events: list, now_ms: int, window_h: float = 6) -> dict:
+    """Лише актуальні попередження: за останні window_h год; помилки ордерів, після яких уже був
+    успішний fill, вважаються розв'язаними і ШІ не показуються (інакше він бачить старі -2015 як поточні)."""
+    last_fill = max((ts for ts, _, kind, _ in events if kind == "fill"), default=0)
+    warn = []
+    for ts, lvl, kind, msg in events:
+        if lvl not in ("WARN", "ERROR") or now_ms - ts > window_h * 3_600_000:
+            continue
+        if kind in ("order", "stop") and ts < last_fill:
+            continue
+        warn.append({"min_ago": int((now_ms - ts) / 60_000), "kind": kind, "msg": msg[:200]})
+    return {"recent_warnings": warn[:8],
+            "last_fill_min_ago": int((now_ms - last_fill) / 60_000) if last_fill else None}
 
 
 def ai_agent(agents: list):

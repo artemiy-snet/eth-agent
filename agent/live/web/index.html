@@ -254,6 +254,7 @@ ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
     <div class="grid stats" id="tradeStats"></div>
     <div class="card" style="margin-top:12px"><h2><span data-i18n="pnl_chart">Результат кожної угоди, USDT</span></h2>
       <div class="chart" id="pnlChart" style="height:200px"></div></div>
+    <div class="card" style="margin-top:12px"><h2 data-i18n="open_pos">Відкриті позиції</h2><div class="scroll"><table class="tbl" id="openTbl"></table></div></div>
     <div class="card" style="margin-top:12px"><h2 data-i18n="trades">Угоди</h2><div class="scroll"><table class="tbl" id="tradesTbl"></table></div></div>
     <div class="card" style="margin-top:12px"><h2 data-i18n="journal">Журнал подій</h2>
       <div class="filters"><span class="seg" id="lvlSeg"><button data-l="" aria-pressed="true" data-i18n="all">усі</button><button data-l="WARN" aria-pressed="false" data-i18n="warnings">попередження</button><button data-l="ai" aria-pressed="false">ШІ</button></span></div>
@@ -290,7 +291,7 @@ const T = {
   thesis:"Теза",invalidation:"Спростування",critic:"Критик",mode_auto:"діє автоматично (лише зменшує ризик)",mode_shadow:"тіньовий режим",
   next_run:"наступна оцінка",no_ai:"Оцінок ШІ ще немає. Додай ANTHROPIC_API_KEY у Налаштуваннях.",
   cagr:"Річна",maxdd:"Макс. просадка",current:"поточний",news_empty:"Новини завантажуються…",
-  t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
+  open_pos:"Відкриті позиції",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
   t_in:"Вхід",t_out:"Вихід",t_qty:"ETH",ev_time:"Час",ev_msg:"Подія",
   s_general:"Загальне",s_portfolio:"Портфель",s_keys:"Ключі доступу",s_ai:"ШІ-аналітик",s_ai_trader:"ШІ-трейдер (рукав D)",s_strategy:"Стратегія A/B",s_risk:"Ризик-менеджмент",s_control:"Керування агентом",
   save:"Зберегти",restart:"Перезапустити агента",saved:"Збережено. Натисни «Перезапустити агента», щоб застосувати.",
@@ -323,7 +324,7 @@ const T = {
   thesis:"Thesis",invalidation:"Invalidation",critic:"Critic",mode_auto:"applied automatically (risk-down only)",mode_shadow:"shadow mode",
   next_run:"next assessment",no_ai:"No AI assessments yet. Add ANTHROPIC_API_KEY in Settings.",
   cagr:"Annual",maxdd:"Max drawdown",current:"current",news_empty:"Loading news…",
-  t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
+  open_pos:"Open positions",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
   t_in:"Entry",t_out:"Exit",t_qty:"ETH",ev_time:"Time",ev_msg:"Event",
   s_general:"General",s_portfolio:"Portfolio",s_keys:"Access keys",s_ai:"AI analyst",s_ai_trader:"AI trader (sleeve D)",s_strategy:"Strategy A/B",s_risk:"Risk management",s_control:"Agent control",
   save:"Save",restart:"Restart agent",saved:"Saved. Press “Restart agent” to apply.",
@@ -397,7 +398,7 @@ function buildOverlayToggles(){const box=$("#overlays");box.textContent="";
     el("i",{class:"k",style:"background:var("+col+")"}),t(lab));box.append(b)}}
 
 // ---------- loading ----------
-async function loadOverview(){try{const prev=S.ov;S.ov=await api("/api/overview");S.ovAt=Date.now();S.fail=0;renderOverview();flashPrice(prev,S.ov)}catch(e){S.fail=(S.fail||0)+1;heartbeat()}}
+async function loadOverview(){try{const prev=S.ov;S.ov=await api("/api/overview");S.ovAt=Date.now();S.fail=0;renderOverview();renderOpen();flashPrice(prev,S.ov)}catch(e){S.fail=(S.fail||0)+1;heartbeat()}}
 function flashPrice(prev,cur){if(!prev||!cur)return;const a=parseFloat(prev.price),b=parseFloat(cur.price);if(!a||!b||a===b)return;
   const v=document.querySelector("#kpis .kpi .v");if(!v)return;v.classList.remove("flash-up","flash-dn");void v.offsetWidth;v.classList.add(b>a?"flash-up":"flash-dn")}
 // серцебиття: щосекунди — скільки минуло від останнього кроку агента
@@ -682,7 +683,14 @@ function drawAiChart(){const host=$("#aiChart");if(!host.offsetParent)return;con
 
 // ---------- trades tab ----------
 async function loadTrades(){await loadSide();try{S.events=await api("/api/events")}catch(e){}renderTrades();renderEvents();drawPnl()}
-function renderTrades(){const tr=S.trades||[];const st=$("#tradeStats");st.textContent="";
+function renderOpen(){const tb=$("#openTbl");if(!tb)return;tb.textContent="";const o=S.ov||{};const px=parseFloat(o.price);
+  tb.append(el("tr",{},[t("t_since"),t("t_sleeve"),t("t_bot"),t("t_in"),t("t_now"),"ETH",t("t_upnl"),t("t_stop")].map(h=>el("th",{},h))));let n=0;
+  for(const s of o.sleeves||[])for(const b of s.bots||[]){if(b.phase==="FLAT"||!parseFloat(b.eth))continue;n++;
+    const e=parseFloat(b.entry),q=parseFloat(b.eth),u=e&&px?(px-e)*q:null,pc=e&&px?(px/e-1)*100:null;
+    tb.append(el("tr",{},el("td",{},b.entry_ts?fmtTime(b.entry_ts):"—"),el("td",{},s.sleeve||"—"),el("td",{},"#"+b.id),el("td",{},e?fmt(e):"—"),
+      el("td",{},px?fmt(px):"—"),el("td",{},fmt(q,4)),el("td",{class:u>=0?"pos":"neg"},u==null?"—":fmtSigned(u)+" $ ("+fmtSigned(pc)+" %)"),el("td",{},b.stop?fmt(parseFloat(b.stop)):"—")))}
+  if(!n)tb.append(el("tr",{},el("td",{colspan:8,class:"empty"},t("no_open"))))}
+function renderTrades(){renderOpen();const tr=S.trades||[];const st=$("#tradeStats");st.textContent="";
   const wins=tr.filter(x=>x.pnl>0),loss=tr.filter(x=>x.pnl<0);const gw=wins.reduce((a,x)=>a+x.pnl,0),gl=-loss.reduce((a,x)=>a+x.pnl,0),sum=gw-gl;
   const kpi=(l,v,cls)=>el("div",{class:"card kpi"},el("div",{class:"l"},l),el("div",{class:"v "+(cls||"")},v));
   st.append(kpi(t("t_count"),tr.length),kpi(t("t_win"),tr.length?fmt(wins.length/tr.length*100,0)+" %":"—"),kpi(t("t_pf"),gl>0?fmt(gw/gl):"—"),kpi(t("t_pnl"),fmtSigned(sum)+" $",sum>0?"pos":sum<0?"neg":""));

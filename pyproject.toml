@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eth-agent"
-version = "0.9.4b1"
+version = "0.9.5b1"
 description = "ETH-Агент: спотовий агент ETHUSDT на логіці «точок дії» CryptoBot v2.02"
 requires-python = ">=3.12"
 # Ядро (живий агент) — лише pyyaml, щоб ставилось у Termux на Android без компіляції.

@@ -80,6 +80,7 @@ class Agent:
         self.next_stop_poll = 0
         self.balance_diff = ZERO
         self.last_status: dict = {}
+        self.analyst = None          # ШІ-аналітик новин (тіньовий), див. build()
 
     # --- дані ----------------------------------------------------------------------------
     def now(self) -> int:
@@ -321,14 +322,40 @@ class Agent:
         t_end = time.time() + stop_after_s if stop_after_s else None
         self.j.event("INFO", "start", f"агент запущено, режим {self.s.mode}")
         self.n.send(f"▶️ ETH-Агент запущено, режим {self.s.mode}")
+        start_notes(self.j, self.analyst)
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
                 self.tick()
+                if self.analyst:
+                    self.analyst.maybe_run(self.now(), market_for_analyst([self.last_status]))
             except Exception as e:                       # noqa: BLE001 — нічого не ковтаємо мовчки
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
             time.sleep(max(1.0, self.s.poll_s - (time.time() - t0)))
+
+
+def market_for_analyst(statuses: list[dict]) -> dict:
+    """Стислий ринковий пакет для ШІ-аналітика зі статусів рукавів (без ключів і балансів біржі)."""
+    s0 = next((x for x in statuses if x), {})
+    if not s0:
+        return {}
+    return {"price": s0.get("price"), "ema_dist_pct_vs_ema200d": s0.get("ema_dist_pct"),
+            "atr_1d_pct": s0.get("atr_pct"), "ema200_1h_slope_24h_pct": s0.get("ema_slope_pct"),
+            "high_24h": s0.get("anchor_high"),
+            "sleeves": [{"name": x.get("sleeve"), "entry_gate": x.get("entry_gate"),
+                         "in_eth": any(b.get("phase") != "FLAT" for b in x.get("bots", []))} for x in statuses if x]}
+
+
+def start_notes(j, analyst) -> None:
+    from agent.features import calendar
+    left = calendar.days_left(int(time.time() * 1000))
+    if left < 45:
+        j.event("WARN", "calendar", f"календар макроподій закінчується через {left:.0f} дн — онови agent/features/calendar.py")
+    if analyst is None:
+        j.event("INFO", "ai_news", "ШІ-аналітик новин вимкнено (немає ANTHROPIC_API_KEY у secrets.env або analyst.news_shadow: false)")
+    else:
+        j.event("INFO", "ai_news", f"ШІ-аналітик новин: тіньовий режим, модель {analyst.model}, раз на {analyst.every_h:g} год")
 
 
 class Portfolio:
@@ -339,6 +366,7 @@ class Portfolio:
         a0 = agents[0]
         self.s, self.home, self.j, self.n, self.broker = a0.s, a0.home, a0.j, a0.n, a0.broker
         self.next_reconcile = 0
+        self.analyst = None
         for a in agents:
             a.next_reconcile = 10**18      # звірка спільна — див. reconcile()
 
@@ -380,10 +408,13 @@ class Portfolio:
         names = ", ".join(a.name for a in self.agents)
         self.j.event("INFO", "start", f"портфель запущено ({names}), режим {self.s.mode}")
         self.n.send(f"▶️ ETH-Агент: портфель {names}, режим {self.s.mode}")
+        start_notes(self.j, self.analyst)
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
                 self.tick()
+                if self.analyst:
+                    self.analyst.maybe_run(self.agents[0].now(), market_for_analyst([a.last_status for a in self.agents]))
             except Exception as e:                       # noqa: BLE001
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
@@ -400,7 +431,7 @@ def read_secrets(home: Path) -> dict[str, str]:
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
-    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
+    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out
@@ -425,10 +456,14 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
         broker = PaperBroker(settings.v3.fee_pct, filters)
     else:
         broker = ExchangeBroker(client, settings.pair, filters, settings.mode, settings.stop_limit_buffer_pct)
+    from agent.analyst import shadow
     if not settings.sleeves:
-        return Agent(settings, client, broker, home, journal, notifier, filters)
-    from agent.strategy import trend
-    agents = [Agent(settings, client, broker, home, journal, notifier, filters,
-                    strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
-                    features=sl.features, name=sl.name) for sl in settings.sleeves]
-    return Portfolio(agents)
+        obj = Agent(settings, client, broker, home, journal, notifier, filters)
+    else:
+        from agent.strategy import trend
+        agents = [Agent(settings, client, broker, home, journal, notifier, filters,
+                        strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
+                        features=sl.features, name=sl.name) for sl in settings.sleeves]
+        obj = Portfolio(agents)
+    obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home)
+    return obj

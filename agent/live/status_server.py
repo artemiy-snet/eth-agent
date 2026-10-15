@@ -25,6 +25,7 @@ form{{display:inline}} button{{font-size:15px;padding:10px 14px;border-radius:10
 <div class="card"><div class="big">{price} USDT</div>
 <div>Капітал: <b>{equity}</b> із {start_equity} USDT · зв'язок: {conn}</div>
 <div>Режим ринку (ціна vs EMA200 днів): {regime}</div></div>
+<div class="card"><b>Події та новини</b><div>Найближча макроподія: {next_event}</div><div>{ai}</div></div>
 {sleeves}
 <div class="card"><b>Останні події</b><table>{events}</table></div>
 <div class="card"><b>Останні угоди</b><table>{trades}</table></div>
@@ -51,7 +52,9 @@ def _sleeve_html(st: dict, title: str) -> str:
 
 
 TITLES = {"v3": "Денний відскок", "A": "A · Денний відскок", "B": "B · Відскок розширений",
-          "B1": "B1 · Відскок розширений (ризик 1 %)", "C": "C · Режимне утримання"}
+          "B1": "B1 · Відскок розширений (ризик 1 %)", "C": "C · Режимне утримання",
+          "A_ев": "A · Денний відскок (пауза на макроподії)", "B_ев": "B · Відскок розширений (пауза на макроподії)",
+          "B1_ев": "B1 · Відскок, ризик 1 % (пауза на макроподії)", "C_ев": "C · Режимне утримання (½ у USDT на подію)"}
 
 
 def render(agent) -> str:
@@ -73,7 +76,21 @@ def render(agent) -> str:
         regime = f"<span class='{'ok' if d >= 0 else 'warn'}'>{d:+.1f} % — {'висхідний' if d >= 0 else 'низхідний'}</span>"
     except (TypeError, ValueError):
         regime = "<span class='mut'>рахується</span>"
-    return PAGE.format(
+    from agent.features import calendar
+    ne = calendar.next_event(int(time.time() * 1000))
+    next_event = (f"{ne[1].upper()} — {time.strftime('%d.%m %H:%M', time.localtime(ne[0] / 1000))} "
+                  f"(через {(ne[0] / 1000 - time.time()) / 3600:.0f} год)") if ne else "<span class='bad'>календар закінчився</span>"
+    ai = "<span class='mut'>ШІ-аналітик: ще немає оцінки (потрібен ANTHROPIC_API_KEY)</span>"
+    try:
+        r = json.loads((agent.home / "ai_news.json").read_text())
+        cls = {"NORMAL": "ok", "CAUTION": "warn", "RISK_OFF": "bad"}.get(r.get("news_regime"), "mut")
+        ai = (f"ШІ (тінь, {time.strftime('%d.%m %H:%M', time.localtime(r['ts'] / 1000))}): "
+              f"<span class='{cls}'>{e(r.get('news_regime', ''))}</span> ({float(r.get('confidence', 0)):.2f}) — "
+              f"{e('; '.join(r.get('facts', [])[:3]))}<div class='mut'>якби діяв: {e(r.get('would_do', ''))}. "
+              f"Зараз на торгівлю не впливає.</div>")
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return PAGE.format(next_event=next_event, ai=ai,
         mode=e(s0.get("mode", "—")), when=time.strftime("%d.%m.%Y %H:%M:%S"), price=s0.get("price", "—"),
         equity=f"{total:.2f}", start_equity=f"{start:.2f}",
         conn="<span class='ok'>є</span>" if s0.get("connected") else "<span class='bad'>немає</span>",

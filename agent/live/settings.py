@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from decimal import Decimal
 from pathlib import Path
 
@@ -59,6 +59,7 @@ class LiveSettings:
     status_port: int = 8765
     sleeves: tuple = ()          # порожньо — одна стратегія v3 з секції v3
     capital_usdt: Decimal = D("500")
+    analyst: dict = field(default_factory=dict)   # секція analyst (ШІ-аналітик новин, тіньовий режим)
 
 
 def _merge(base: dict, over: dict | None) -> dict:
@@ -164,4 +165,5 @@ def load(path: Path, mode: str | None = None) -> LiveSettings:
         status_port=int(live.get("status_port", 8765)),
         sleeves=build_sleeves(raw)[0],
         capital_usdt=build_sleeves(raw)[1],
+        analyst=dict(raw.get("analyst") or {}),
     )

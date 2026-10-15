@@ -188,6 +188,42 @@ def _report_md(out: dict, a) -> str:
             f"{rows}\n\n" + ("\n".join(f"- {v}" for v in verdict) + "\n" if verdict else ""))
 
 
+def _cmd_ai_review(a) -> int:
+    """Чи передбачали тіньові вердикти ШІ падіння? Читає журнал, ціни — публічні 1h-свічки Binance."""
+    import json
+    import sqlite3
+    import time
+
+    from agent.analyst.shadow import REGIMES, review
+    from agent.live.binance import BASES, Client
+
+    home = Path(a.home).expanduser()
+    db = home / f"journal_{a.mode}.sqlite"
+    rows = sqlite3.connect(str(db)).execute("select data from events where kind='ai_news' and level='INFO'").fetchall()
+    evs = [d for d in (json.loads(r[0] or "{}") for r in rows) if d.get("news_regime")]
+    c = Client(BASES["paper"])
+    now = int(time.time() * 1000)
+
+    def price_at(ts: int, h: int):
+        end = ts + h * 3_600_000
+        if end > now:
+            return None
+        k = c.klines("ETHUSDT", "1h", limit=h, end_time=end)
+        return (k[0][1], k[-1][4], min(x[3] for x in k)) if k else None
+
+    r = review(evs, price_at)
+    print(f"Тіньових оцінок: {len(evs)} ({db})")
+    print("| Режим | n | рух 24 год, % | падіння 24 год, % | рух 72 год, % | падіння 72 год, % |")
+    print("|---|---|---|---|---|---|")
+    for g in REGIMES:
+        x = r[g]
+        f = lambda k: f"{x[k]:.2f}" if k in x else "—"
+        print(f"| {g} | {x['n']} | {f('ret_24h')} | {f('dd_24h')} | {f('ret_72h')} | {f('dd_72h')} |")
+    print("Вплив ШІ має сенс, лише якщо після CAUTION/RISK_OFF падіння помітно глибші, ніж після NORMAL, "
+          "на ≥ 30 оцінках кожного типу.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="eth-agent")
     p.add_argument("--data", default="data", help="тека даних (поза git)")
@@ -236,10 +272,14 @@ def main(argv: list[str] | None = None) -> int:
     lv.add_argument("--clear-kill", action="store_true", help="зняти kill switch вручну")
     lv.add_argument("--telegram-setup", action="store_true", help="показати chat id для secrets.env")
 
+    ar = sub.add_parser("ai-review", help="оцінка тіньових вердиктів ШІ-аналітика новин")
+    ar.add_argument("--mode", choices=["paper", "testnet"], default="paper")
+    ar.add_argument("--home", default="~/.eth-agent")
+
     a = p.parse_args(argv)
     return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
             "walkforward": _cmd_walkforward, "live": _cmd_live,
-            "portfolio": _cmd_portfolio}[a.cmd](a)
+            "portfolio": _cmd_portfolio, "ai-review": _cmd_ai_review}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -54,3 +54,13 @@ risk:                       # розділ 5 Біблії
   max_open_risk_pct: 2      # сума ризиків до стопів по всіх ботах ≤ 2 % капіталу
 
 backtest: { slippage_pct: 0.05 }
+
+# ШІ-аналітик новин (Біблія, розділ 7). ТІНЬОВИЙ режим: лише записує оцінку NORMAL / CAUTION / RISK_OFF
+# у журнал і на сторінку статусу, на торгівлю не впливає. Потрібен ANTHROPIC_API_KEY у ~/.eth-agent/secrets.env.
+# Правило асиметрії (коли вплив увімкне Командир): ШІ може лише зменшувати ризик, ніколи не створює ордерів.
+analyst:
+  news_shadow: true
+  model: claude-sonnet-5-5
+  news_every_h: 4
+  news_lookback_h: 12
+  # feeds: [https://www.coindesk.com/arc/outboundfeeds/rss/, https://cointelegraph.com/rss]

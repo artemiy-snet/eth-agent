@@ -15,6 +15,8 @@ BINANCE_API_SECRET=
 # Необов'язково: сповіщення в Telegram
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+# Необов'язково: ШІ-аналітик новин (тіньовий режим), ключ з console.anthropic.com
+ANTHROPIC_API_KEY=
 EOF
   chmod 600 ~/.eth-agent/secrets.env
 fi

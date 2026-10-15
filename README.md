@@ -29,7 +29,7 @@ bash scripts/run.sh
 ```
 Панель: http://127.0.0.1:8765
 
-Оновлення: новий архів у «Завантаження», далі . Покроково — [docs/INSTALL_UA.txt](docs/INSTALL_UA.txt).
+Оновлення: новий архів у «Завантаження», далі `bash ~/eth-agent-main/scripts/update.sh`. Покроково — [docs/INSTALL_UA.txt](docs/INSTALL_UA.txt).
 
 ## Розробка
 

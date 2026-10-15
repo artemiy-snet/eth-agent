@@ -9,11 +9,27 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from decimal import Decimal
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_for_binance(host, *args, **kwargs):
+    """Ключ Binance прив'язаний до IPv4-адреси — запити до Binance завжди через IPv4,
+    інакше на мережі з IPv6 біржа побачить «чужу» адресу (помилка -2015)."""
+    res = _orig_getaddrinfo(host, *args, **kwargs)
+    if isinstance(host, str) and host.endswith(("binance.com", "binance.vision")):
+        v4 = [r for r in res if r[0] == socket.AF_INET]
+        return v4 or res
+    return res
+
+
+socket.getaddrinfo = _ipv4_for_binance
 
 BASES = {
     "paper": "https://data-api.binance.vision",      # лише публічні ринкові дані
@@ -24,7 +40,9 @@ BASES = {
 
 class BinanceError(Exception):
     def __init__(self, http_status: int, code: int | None, msg: str):
-        super().__init__(f"HTTP {http_status} code={code}: {msg}")
+        hint = (" → ключ не прийнято: перевір IP у ключі (адреса цього пристрою: curl -4 ifconfig.me), "
+                "права спотової торгівлі і чи ключ від того середовища (live/testnet)") if code == -2015 else ""
+        super().__init__(f"HTTP {http_status} code={code}: {msg}{hint}")
         self.http_status, self.code, self.msg = http_status, code, msg
 
 

@@ -460,3 +460,19 @@ def test_live_mini_preset_can_trade_with_20(tmp_path):
     (tmp_path / "overrides.yaml").write_text("agent: {mode: live}\nlive: {confirmed: true, max_capital_usdt: 20, preset: live_міні}\n")
     s = load(Path("config.portfolio.yaml"), home=tmp_path)
     assert [x.name for x in s.sleeves] == ["Bm", "Cm"] and runner.sleeve_feasibility(s) == []
+
+
+def test_binance_resolves_ipv4_only():
+    import socket
+
+    from agent.live import binance  # noqa: F401 — встановлює фільтр
+    orig = binance._orig_getaddrinfo
+    fake = [(socket.AF_INET6, 1, 6, "", ("::1", 443, 0, 0)), (socket.AF_INET, 1, 6, "", ("1.2.3.4", 443))]
+    binance._orig_getaddrinfo = lambda *a, **k: fake
+    try:
+        assert [r[0] for r in socket.getaddrinfo("api.binance.com", 443)] == [socket.AF_INET]
+        assert len(socket.getaddrinfo("example.org", 443)) == 2
+    finally:
+        binance._orig_getaddrinfo = orig
+    e = binance.BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
+    assert "IP" in str(e) and "curl -4" in str(e)

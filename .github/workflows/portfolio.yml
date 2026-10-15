@@ -1,0 +1,62 @@
+name: portfolio
+
+# З телефону: Actions → portfolio → Run workflow. Порівняння портфелів у Summary запуску.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Початок, YYYY-MM"
+        required: false
+        default: "2019-01"
+      end:
+        description: "Кінець, YYYY-MM"
+        required: false
+        default: "2026-09"
+      preset:
+        description: "Портфель"
+        type: choice
+        options: [all, поточний, обережний, збалансований, агресивний, лише_режим]
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  portfolio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[research]"
+      - name: Період
+        id: args
+        env:
+          IN_START: ${{ inputs.start }}
+          IN_END: ${{ inputs.end }}
+        run: |
+          python - <<'PY'
+          import os, re
+          s, e = os.environ["IN_START"].strip() or "2019-01", os.environ["IN_END"].strip() or "2026-09"
+          assert re.match(r"^\d{4}-\d{2}$", s) and re.match(r"^\d{4}-\d{2}$", e)
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"start={s}\nend={e}\n")
+          PY
+      - uses: actions/cache@v4
+        with:
+          path: data/klines
+          key: klines-ETHUSDT-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
+          restore-keys: klines-ETHUSDT-
+      - run: eth-agent fetch --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
+      - name: Портфелі
+        env:
+          PRESET: ${{ inputs.preset }}
+        run: |
+          mkdir -p reports
+          eth-agent portfolio --config config.example.yaml --start ${{ steps.args.outputs.start }} \
+            --end ${{ steps.args.outputs.end }} --preset "$PRESET" --summary-md reports/portfolio.md
+          cat reports/portfolio.md >> "$GITHUB_STEP_SUMMARY"
+          python -c "t=open('reports/portfolio.md',encoding='utf-8').read().replace(chr(10),'%0A'); print('::notice title=Портфелі::'+t[:3900])"

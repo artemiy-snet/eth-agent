@@ -118,7 +118,9 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
     bh_sharpe = float(bret.mean() / bret.std() * np.sqrt(365)) if len(bret) > 1 and bret.std() > 0 else 0.0
     years = max(len(eqs) / 365, 1e-9)
     cagr = (float(end_eq) / float(start_eq)) ** (1 / years) - 1 if start_eq > 0 and end_eq > 0 else -1.0
+    daily_eq[int(df["open_time"].iloc[-1]) // 86_400_000] = float(end_eq)
     return Report(
+        equity_curve=sorted(daily_eq.items()),
         start_ts=int(df["open_time"].iloc[0]), end_ts=int(df["open_time"].iloc[-1]),
         start_equity=start_eq, end_equity=end_eq, trades=trades, max_dd_pct=max_dd,
         open_positions=sum(1 for b in state.bots if b.phase is not v3.Phase.FLAT),

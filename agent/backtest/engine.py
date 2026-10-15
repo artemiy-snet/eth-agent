@@ -53,6 +53,7 @@ class Report:
     open_positions: int = 0
     buy_and_hold_pct: Decimal = ZERO
     extra: dict = field(default_factory=dict)
+    equity_curve: list = field(default_factory=list)     # [(UTC-день, капітал)] — для портфельного аналізу
 
     @property
     def pnl_usdt(self) -> Decimal:

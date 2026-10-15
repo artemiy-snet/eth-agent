@@ -106,6 +106,25 @@ def _cmd_walkforward(a) -> int:
     return 0
 
 
+def _cmd_portfolio(a) -> int:
+    import os
+
+    import yaml
+
+    from agent.backtest import portfolio as pf
+    from agent.data import klines
+
+    raw = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) or {}
+    df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
+    presets = None if a.preset == "all" else [a.preset]
+    r = pf.run_all(df, raw, presets, workers=os.cpu_count())
+    md = pf.report_md(r, a.start, a.end)
+    print(md)
+    if a.summary_md:
+        Path(a.summary_md).write_text(md, encoding="utf-8")
+    return 0
+
+
 def _cmd_live(a) -> int:
     from agent.live import runner, settings
     from agent.live.status_server import serve
@@ -198,6 +217,13 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
     w.add_argument("--summary-md")
 
+    pp = sub.add_parser("portfolio", help="портфельний бектест (суміш стратегій)")
+    pp.add_argument("--config", default="config.yaml")
+    pp.add_argument("--start", required=True)
+    pp.add_argument("--end", required=True)
+    pp.add_argument("--preset", default="all")
+    pp.add_argument("--summary-md")
+
     lv = sub.add_parser("live", help="живий агент: paper або testnet")
     lv.add_argument("--mode", choices=["paper", "testnet", "live"], default="paper")
     lv.add_argument("--config", default="config.yaml")
@@ -208,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
 
     a = p.parse_args(argv)
     return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
-            "walkforward": _cmd_walkforward, "live": _cmd_live}[a.cmd](a)
+            "walkforward": _cmd_walkforward, "live": _cmd_live,
+            "portfolio": _cmd_portfolio}[a.cmd](a)
 
 
 if __name__ == "__main__":

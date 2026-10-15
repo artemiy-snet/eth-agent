@@ -232,7 +232,7 @@ def serve(agent, port: int, config_path=None) -> ThreadingHTTPServer:
                                   + ", ".join(res["saved"] + [k + " (ключ)" for k in res["secrets_saved"]]))
                 return self._json(res, 200 if res.get("ok") else 400)
             if path.startswith("/api/check/"):
-                return self._json(api.check(path.rsplit("/", 1)[-1], agent.home, mode))
+                return self._json(api.check(path.rsplit("/", 1)[-1], agent.home, mode, body.get("secrets")))
             return self._json({"ok": False, "error": "not found"}, 404)
 
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)

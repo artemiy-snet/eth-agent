@@ -402,3 +402,21 @@ def test_live_mode_resolution(tmp_path):
     assert load(Path("config.portfolio.yaml"), home=tmp_path).mode == "paper"       # config має mode: backtest
     (tmp_path / "overrides.yaml").write_text("agent:\n  mode: testnet\n")
     assert load(Path("config.portfolio.yaml"), home=tmp_path).mode == "testnet"
+
+
+def test_check_uses_unsaved_field_value(tmp_path, monkeypatch):
+    from agent.live import panel_api
+    seen = {}
+
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"{}"
+
+    def fake_open(req, timeout=0):
+        seen["key"] = req.headers.get("X-api-key")
+        return R()
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    assert panel_api.check("anthropic", tmp_path, "paper")["ok"] is False          # нічого не збережено
+    r = panel_api.check("anthropic", tmp_path, "paper", {"ANTHROPIC_API_KEY": "field-value-1234"})
+    assert r["ok"] and seen["key"] == "field-value-1234"

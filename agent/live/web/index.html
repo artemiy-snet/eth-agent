@@ -299,7 +299,7 @@ const T = {
   done:"Готово",preset_hint:"За бектестом 7 років: річна {c} %, макс. просадка {d} %",preset_ai:"включає рукав D (ШІ-трейдер, 10 %) — без бектесту",
   warn_above:"Вище {v} — більший ризик (Біблія: рішення Командира)",errs:"Помилки",lite:"Проста версія сторінки",
   binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
-  updated:"оновлено",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
+  updated:"оновлено",press_save:"натисни «Зберегти» внизу",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
   last_tick:"останній крок",next_ai:"ШІ через",ai_running:"ШІ аналізує…",armed:"зведено",pending:"ордер",watching:"стежить за ціною",bots_armed:"ботів зведено",positions_open:"позицій",regime_zone_up:"вище EMA200",regime_zone_down:"нижче EMA200"},
  en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_ai_s:"Outlook",tab_tr:"Trades",tab_st:"Settings",
   price_chart:"ETH/USDT price",next_events:"Upcoming events",equity_chart:"Portfolio equity vs ETH",indexed:"index, start = 100",
@@ -332,7 +332,7 @@ const T = {
   done:"Done",preset_hint:"7-year backtest: {c} % a year, max drawdown {d} %",preset_ai:"includes sleeve D (AI trader, 10 %) — no backtest",
   warn_above:"Above {v} means more risk (Bible: Commander's decision)",errs:"Errors",lite:"Simple page",
   binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (AI)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
-  updated:"updated",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
+  updated:"updated",press_save:"press “Save” below",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
   last_tick:"last step",next_ai:"AI in",ai_running:"AI is analysing…",armed:"armed",pending:"order",watching:"watching price",bots_armed:"bots armed",positions_open:"positions",regime_zone_up:"above EMA200",regime_zone_down:"below EMA200"}
 };
 const SLEEVE_NAMES = {
@@ -711,7 +711,7 @@ function renderSettings(){const box=$("#settings");box.textContent="";const st=S
       const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null]];
       for(const [k,l,chk] of keys){const cur=st.secrets[k];const out=el("div",{class:"h"});
         const inp=el("input",{type:k==="TELEGRAM_CHAT_ID"?"text":"password",placeholder:cur?`${t("key_set")} ${cur} — ${t("key_ph")}`:t("key_ph"),autocomplete:"off",oninput:e=>{secrets[k]=e.target.value}});
-        const row=el("div",{class:"keyrow"},inp,chk?el("button",{class:"btn",onclick:async()=>{out.textContent="…";const r=await post("/api/check/"+chk).catch(()=>({ok:false,msg:"?"}));out.textContent=(r.ok?"✓ ":"✗ ")+r.msg;out.className="h msg "+(r.ok?"ok":"err")}},t("check")):null);
+        const row=el("div",{class:"keyrow"},inp,chk?el("button",{class:"btn",onclick:async()=>{out.textContent="…";const r=await post("/api/check/"+chk,{secrets}).catch(()=>({ok:false,msg:"?"}));out.textContent=(r.ok?"✓ ":"✗ ")+r.msg+(r.ok&&secrets[k]?" — "+t("press_save"):"");out.className="h msg "+(r.ok?"ok":"err")}},t("check")):null);
         card.append(el("div",{class:"field"},el("label",{},t(l),el("div",{class:"small "+(cur?"pos":"muted")},cur?`● ${t("key_set")} ${cur}`:`○ ${t("key_none")}`)),row,out))}
       box.append(card);continue}
     for(const f of st.schema.filter(x=>x.section===sec)){const v=st.values[f.key];let input;const warn=el("div",{class:"w"});const hint=el("div",{class:"h"},f.help[LANG]||f.help.uk||"");

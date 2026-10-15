@@ -192,8 +192,12 @@ def save_settings(home: Path, body: dict) -> dict:
 
 
 # --- перевірки ключів ------------------------------------------------------------------------
-def check(kind: str, home: Path, mode: str) -> dict:
+def check(kind: str, home: Path, mode: str, given: dict | None = None) -> dict:
+    """Перевіряє ключі з поля (ще не збережені) або, якщо поле порожнє, — збережені."""
     sec = read_secrets_file(home)
+    for k, v in (given or {}).items():
+        if k in SECRET_KEYS and str(v).strip():
+            sec[k] = str(v).strip()
     try:
         if kind == "binance":
             from agent.live.binance import BASES, Client

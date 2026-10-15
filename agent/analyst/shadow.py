@@ -63,7 +63,7 @@ SYSTEM = """Ти — аналітик торгового агента ETH-Аге
 4. Звичайний новинний шум (прогнози, коливання на кілька %) — NORMAL.
 5. valid_until — не далі ніж через 24 год від «ЗАРАЗ».
 
-Відповідай ТІЛЬКИ валідним JSON без пояснень навколо:
+Будь стислим: до 5 фактів, кожне текстове поле — 1–2 речення. Відповідай ТІЛЬКИ валідним JSON без пояснень навколо:
 {"news_regime": "NORMAL|CAUTION|RISK_OFF", "confidence": 0.0-1.0,
  "facts": ["факт з пакета", ...], "events_ahead": [{"what": "...", "when": "ISO-8601 або опис"}],
  "positions_review": "коротко по кожному рукаву", "anomalies": ["...", ...],
@@ -241,7 +241,9 @@ class ShadowAnalyst:
         try:
             self.last = self.assess(now_ms, market, book=book, reason=reason)
         except Exception as e:  # noqa: BLE001 — без аналітика агент працює як завжди
-            self.journal.event("WARN", "ai_news", f"ШІ-аналітик недоступний: {type(e).__name__}: {str(e)[:200]}")
+            self.journal.event("WARN", "ai_news", f"ШІ-аналітик недоступний: {type(e).__name__}: {str(e)[:200]}"
+                               f" · повтор через 30 хв")
+            self.next_run = min(self.next_run, now_ms + 30 * 60_000)    # не чекати 12 год після збою
         finally:
             self.running = False
 

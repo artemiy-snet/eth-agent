@@ -84,6 +84,7 @@ class Agent:
         self.analyst = None          # ШІ-аналітик, див. build()
         self.ai_mult = D(1)          # множник розміру нових входів від ШІ (≤ 1; лише зменшує ризик)
         self.ai_signal = None        # перевірена ідея ШІ для рукава ai — діє один крок
+        self.order_backoff_until = 0  # пауза після відмови біржі
         self.extra.setdefault("ai_pnls", [])
 
     # --- дані ----------------------------------------------------------------------------
@@ -188,7 +189,13 @@ class Agent:
         else:
             self.extra["pending"].pop(key, None)
             v3.on_reject(self.state, it.bot_id)
-            self.j.event("WARN", "order", f"ордер відхилено: {r.detail}")
+            # Відмова біржі (ключ/права/IP, баланс, фільтри) не зникне за 10 с — пауза нових ордерів,
+            # одне сповіщення замість спаму. Стопи на біржі працюють і без агента.
+            first = self.order_backoff_until <= it.ts
+            self.order_backoff_until = it.ts + 5 * 60_000
+            if first:
+                self.j.event("WARN", "order", f"{self.tag()}ордер відхилено: {r.detail} · наступна спроба через 5 хв")
+                self.n.send(f"⚠️ [{self.s.mode}] {self.tag()}ордер відхилено: {str(r.detail)[:300]}. Повтор через 5 хв.")
 
     def resolve_pending(self, now: int) -> None:
         for key, p in list(self.extra["pending"].items()):
@@ -297,6 +304,10 @@ class Agent:
                 why = blocked[0][1] if blocked else ("виконується" if new else "без дії")
                 self.j.event("INFO", "ai_trade", f"{self.tag()}сигнал {feat.ai_signal.get('id')}: {why}")
             intents += new
+            if now < self.order_backoff_until:
+                for it in new:                       # нові входи/виходи стратегії — після паузи
+                    v3.on_reject(self.state, it.bot_id)
+                intents = [it for it in intents if it not in new]
             for it in intents:
                 if it.side is Side.BUY and self.ai_mult < 1:
                     it = self.apply_ai(it, px)

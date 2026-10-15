@@ -39,7 +39,7 @@ def explain_http(code: int, body: str) -> str:
     return f"HTTP {code}: {msg[:200]}{hint}"
 
 
-def complete(api_key: str, model: str, system: str, user: str, max_tokens: int = 1500,
+def complete(api_key: str, model: str, system: str, user: str, max_tokens: int = 4096,
              timeout: float = 90, workspace_id: str = "") -> str:
     body = json.dumps({"model": model, "max_tokens": max_tokens, "system": system,
                        "messages": [{"role": "user", "content": user}]}).encode()
@@ -51,7 +51,10 @@ def complete(api_key: str, model: str, system: str, user: str, max_tokens: int =
         raise ClaudeError(explain_http(e.code, e.read().decode(errors="replace"))) from None
     except (urllib.error.URLError, TimeoutError) as e:
         raise ClaudeError(f"мережа: {e}") from None
-    return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    if data.get("stop_reason") == "max_tokens":
+        raise ClaudeError(f"відповідь обрізана лімітом {max_tokens} токенів")
+    return text
 
 
 def extract_json(text: str) -> dict:

@@ -512,3 +512,42 @@ def test_trend_without_breakout_needs_only_24h_anchor():
     raw = yaml.safe_load(open("config.portfolio.yaml", encoding="utf-8"))
     sl = {s.name: s for s in build_sleeves(raw)[0]}
     assert sl["C"].features.anchor_h == 24
+
+
+def test_exchange_rejection_backs_off_instead_of_spamming(tmp_path, monkeypatch):
+    from agent.live.binance import BinanceError
+    a, c = make(tmp_path)
+    calls = []
+
+    def reject(**p):
+        calls.append(p)
+        raise BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
+    monkeypatch.setattr(c, "new_order", reject)
+    buy_path(a, c)                                   # купівля → відмова
+    n = len(calls)
+    assert n == 1 and a.state.bots[0].phase is v3.Phase.FLAT
+    for px in (989, 980, 992, 989, 980, 992):        # ще 6 хвилин сигналів — без нових ордерів
+        step(a, c, px, dt=30_000)
+    assert len(calls) == 1
+    warns = [m for _, lvl, _, m in a.j.recent_events(50) if "ордер відхилено" in m]
+    assert len(warns) == 1 and "5 хв" in warns[0]
+    for px in (989, 980, 992):                       # після паузи — нова спроба
+        step(a, c, px, dt=120_000)
+    assert len(calls) >= 2
+
+
+def test_claude_truncated_reply_is_error(monkeypatch):
+    import io
+    import json as _json
+
+    import pytest as _pt
+
+    from agent.analyst import claude as cl
+
+    class R(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=0: R(_json.dumps(
+        {"content": [{"type": "text", "text": '{"a": '}], "stop_reason": "max_tokens"}).encode()))
+    with _pt.raises(cl.ClaudeError, match="обрізана"):
+        cl.complete("k", "m", "s", "u")

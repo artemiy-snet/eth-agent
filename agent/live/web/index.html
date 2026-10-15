@@ -298,7 +298,7 @@ const T = {
   confirm_flat:"Продати всі позиції за ринком і зупинити входи?",confirm_clear:"Зняти kill switch і дозволити нові входи?",confirm_stop:"Заборонити нові входи?",
   done:"Готово",preset_hint:"За бектестом 7 років: річна {c} %, макс. просадка {d} %",preset_ai:"включає рукав D (ШІ-трейдер, 10 %) — без бектесту",
   warn_above:"Вище {v} — більший ризик (Біблія: рішення Командира)",errs:"Помилки",lite:"Проста версія сторінки",
-  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
+  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",anthropic_ws:"Anthropic workspace ID (лише для ключа рівня «Організація», wrkspc_…)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
   updated:"оновлено",press_save:"натисни «Зберегти» внизу",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
   last_tick:"останній крок",next_ai:"ШІ через",ai_running:"ШІ аналізує…",armed:"зведено",pending:"ордер",watching:"стежить за ціною",bots_armed:"ботів зведено",positions_open:"позицій",regime_zone_up:"вище EMA200",regime_zone_down:"нижче EMA200"},
  en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_ai_s:"Outlook",tab_tr:"Trades",tab_st:"Settings",
@@ -331,7 +331,7 @@ const T = {
   confirm_flat:"Sell all positions at market and block entries?",confirm_clear:"Clear the kill switch and allow new entries?",confirm_stop:"Block new entries?",
   done:"Done",preset_hint:"7-year backtest: {c} % a year, max drawdown {d} %",preset_ai:"includes sleeve D (AI trader, 10 %) — no backtest",
   warn_above:"Above {v} means more risk (Bible: Commander's decision)",errs:"Errors",lite:"Simple page",
-  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (AI)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
+  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (AI)",anthropic_ws:"Anthropic workspace ID (only for an Organization-scope key, wrkspc_…)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
   updated:"updated",press_save:"press “Save” below",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
   last_tick:"last step",next_ai:"AI in",ai_running:"AI is analysing…",armed:"armed",pending:"order",watching:"watching price",bots_armed:"bots armed",positions_open:"positions",regime_zone_up:"above EMA200",regime_zone_down:"below EMA200"}
 };
@@ -708,9 +708,9 @@ function renderSettings(){const box=$("#settings");box.textContent="";const st=S
   const msg=el("span",{class:"msg"});
   for(const [sec,lab] of sections){const card=el("div",{class:"card form"},el("h2",{},t(lab)));
     if(sec==="keys"){card.append(el("div",{class:"small muted"},t("keys_help")));
-      const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null]];
+      const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["ANTHROPIC_WORKSPACE_ID","anthropic_ws",null],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null]];
       for(const [k,l,chk] of keys){const cur=st.secrets[k];const out=el("div",{class:"h"});
-        const inp=el("input",{type:k==="TELEGRAM_CHAT_ID"?"text":"password",placeholder:cur?`${t("key_set")} ${cur} — ${t("key_ph")}`:t("key_ph"),autocomplete:"off",oninput:e=>{secrets[k]=e.target.value}});
+        const inp=el("input",{type:(k==="TELEGRAM_CHAT_ID"||k==="ANTHROPIC_WORKSPACE_ID")?"text":"password",placeholder:cur?`${t("key_set")} ${cur} — ${t("key_ph")}`:t("key_ph"),autocomplete:"off",oninput:e=>{secrets[k]=e.target.value}});
         const row=el("div",{class:"keyrow"},inp,chk?el("button",{class:"btn",onclick:async()=>{out.textContent="…";const r=await post("/api/check/"+chk,{secrets}).catch(()=>({ok:false,msg:"?"}));out.textContent=(r.ok?"✓ ":"✗ ")+r.msg+(r.ok&&secrets[k]?" — "+t("press_save"):"");out.className="h msg "+(r.ok?"ok":"err")}},t("check")):null);
         card.append(el("div",{class:"field"},el("label",{},t(l),el("div",{class:"small "+(cur?"pos":"muted")},cur?`● ${t("key_set")} ${cur}`:`○ ${t("key_none")}`)),row,out))}
       box.append(card);continue}

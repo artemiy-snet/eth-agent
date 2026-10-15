@@ -19,7 +19,8 @@ import yaml
 from agent.features import calendar
 from agent.strategy.sleeves import BASE_PRESETS, PRESETS, SLEEVES
 
-SECRET_KEYS = ["BINANCE_API_KEY", "BINANCE_API_SECRET", "ANTHROPIC_API_KEY", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"]
+SECRET_KEYS = ["BINANCE_API_KEY", "BINANCE_API_SECRET", "ANTHROPIC_API_KEY", "ANTHROPIC_WORKSPACE_ID", "TELEGRAM_TOKEN",
+               "TELEGRAM_CHAT_ID"]
 LIVE_PRESETS = BASE_PRESETS + [k for k in PRESETS if "+ші" in k]
 
 # Очікування за бектестом 7 років (docs/strategies.md) — для підказок у виборі пресета.
@@ -212,14 +213,20 @@ def check(kind: str, home: Path, mode: str, given: dict | None = None) -> dict:
                                        f"торгівля {'так' if acc.get('canTrade') else 'ні'}"
                                        + (" · ⚠ ключ має право виведення!" if warn else "")}
         if kind == "anthropic":
+            import urllib.error
             import urllib.request
+
+            from agent.analyst.claude import explain_http, headers
             key = sec.get("ANTHROPIC_API_KEY", "")
             if not key:
                 return {"ok": False, "msg": "ключ не задано"}
-            req = urllib.request.Request("https://api.anthropic.com/v1/models?limit=1", headers={
-                "x-api-key": key, "anthropic-version": "2023-06-01"})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                r.read()
+            req = urllib.request.Request("https://api.anthropic.com/v1/models?limit=1",
+                                         headers=headers(key, sec.get("ANTHROPIC_WORKSPACE_ID", "")))
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    r.read()
+            except urllib.error.HTTPError as e:
+                return {"ok": False, "msg": explain_http(e.code, e.read().decode(errors="replace"))}
             return {"ok": True, "msg": "ключ дійсний"}
         if kind == "telegram":
             if not (sec.get("TELEGRAM_TOKEN") and sec.get("TELEGRAM_CHAT_ID")):

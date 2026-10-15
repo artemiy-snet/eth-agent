@@ -156,3 +156,20 @@ def test_review_compares_regimes():
     r = shadow.review(ev, lambda ts, h: px[ts])
     assert r["NORMAL"]["dd_24h"] == pytest.approx(-1) and r["CAUTION"]["ret_24h"] == pytest.approx(-10)
     assert r["RISK_OFF"]["n"] == 0
+
+
+def test_workspace_header_and_error_explained(tmp_path, monkeypatch):
+    from agent.analyst import claude as cl
+    assert "anthropic-workspace-id" not in cl.headers("k")
+    assert cl.headers("k", "wrkspc_1")["anthropic-workspace-id"] == "wrkspc_1"
+    msg = cl.explain_http(400, '{"error":{"message":"anthropic-workspace-id header is required"}}')
+    assert "Організація" in msg and "400" in msg
+    monkeypatch.setattr(news, "fetch", lambda feeds, since: ([], []))
+    seen = {}
+
+    def fake(k, m, sy, u, workspace_id=""):
+        seen["ws"] = workspace_id
+        return json.dumps(GOOD)
+    a = shadow.from_settings({}, {"ANTHROPIC_API_KEY": "k", "ANTHROPIC_WORKSPACE_ID": "wrkspc_9"}, J(), tmp_path)
+    a.assess(0, {"price": "1"}, complete=fake)
+    assert seen["ws"] == "wrkspc_9"

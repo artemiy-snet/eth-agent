@@ -593,7 +593,8 @@ def read_secrets(home: Path) -> dict[str, str]:
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
-    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY"):
+    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
+              "ANTHROPIC_WORKSPACE_ID"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out

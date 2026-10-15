@@ -190,6 +190,7 @@ class ShadowAnalyst:
     action_regime: str = "NORMAL"
     prices: deque = field(default_factory=lambda: deque(maxlen=2000))
     # рукав «ШІ-трейдер» (7.6)
+    workspace_id: str = ""              # для ключа рівня «Організація» (anthropic-workspace-id)
     trade: bool = False                 # пропонувати угоди (лише якщо в портфелі є рукав ai)
     min_confidence: float = 0.6
     signal_ttl_min: int = 30
@@ -250,6 +251,9 @@ class ShadowAnalyst:
         heads, errors = news.fetch(self.feeds, now_ms - int(self.lookback_h * 3_600_000))
         packet = build_packet(now_ms, market, heads, self.kinds, book=book, reason=reason)
         trading = self.trade and not self.trading_disabled and bool((book or {}).get("ai_sleeve"))
+        if self.workspace_id:
+            base = complete
+            complete = lambda k, m, sy, u: base(k, m, sy, u, workspace_id=self.workspace_id)  # noqa: E731
         raw = complete(self.api_key, self.model, SYSTEM + (TRADER if trading else ""), packet)
         try:
             rep = validate(claude.extract_json(raw))
@@ -343,7 +347,7 @@ def from_settings(raw: dict, secrets: dict, journal, home: Path, notifier=None) 
     mode = str(a.get("mode", "shadow"))
     if mode not in ("shadow", "auto"):
         raise ValueError("analyst.mode: shadow або auto")
-    return ShadowAnalyst(api_key=key, model=str(a.get("model") or "claude-sonnet-5-5"), journal=journal, home=home,
+    return ShadowAnalyst(api_key=key, workspace_id=secrets.get("ANTHROPIC_WORKSPACE_ID", ""), model=str(a.get("model") or "claude-sonnet-5-5"), journal=journal, home=home,
                          every_h=float(a.get("every_h", a.get("news_every_h", 12))),
                          feeds=list(a.get("feeds") or news.DEFAULT_FEEDS),
                          lookback_h=float(a.get("news_lookback_h", 12)), mode=mode,

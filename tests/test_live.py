@@ -391,3 +391,14 @@ def test_panel_api_settings_and_csrf(tmp_path):
         srv.shutdown()
         srv.server_close()
     assert panel_api.mask("abcdef") == "…cdef"
+
+
+def test_live_mode_resolution(tmp_path):
+    from pathlib import Path
+
+    from agent.live.settings import live_mode, load
+    assert live_mode(None, "backtest") == "paper" and live_mode(None, None) == "paper"
+    assert live_mode(None, "testnet") == "testnet" and live_mode("paper", "testnet") == "paper"
+    assert load(Path("config.portfolio.yaml"), home=tmp_path).mode == "paper"       # config має mode: backtest
+    (tmp_path / "overrides.yaml").write_text("agent:\n  mode: testnet\n")
+    assert load(Path("config.portfolio.yaml"), home=tmp_path).mode == "testnet"

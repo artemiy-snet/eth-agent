@@ -172,13 +172,21 @@ def load_raw(path: Path, home: Path | None = None) -> dict:
     return raw
 
 
+def live_mode(cli: str | None, cfg: str | None) -> str:
+    """Режим живого агента: аргумент запуску → налаштування (панель/конфіг) → paper.
+    agent.mode у конфігу бектесту = backtest — для живого агента це paper."""
+    if cli:
+        return cli
+    return cfg if cfg in ("paper", "testnet", "live") else "paper"
+
+
 def load(path: Path, mode: str | None = None, home: Path | None = None) -> LiveSettings:
     raw = load_raw(path, home)
     agent = raw.get("agent", {})
     live = raw.get("live", {})
     return LiveSettings(
         pair=agent.get("pair", "ETHUSDT"),
-        mode=mode or agent.get("mode", "paper"),
+        mode=live_mode(mode, agent.get("mode")),
         v3=v3_params(raw.get("v3")),
         risk=risk_params(raw.get("risk")),
         features=feature_params(raw.get("features")),

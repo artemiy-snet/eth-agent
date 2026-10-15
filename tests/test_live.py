@@ -239,3 +239,45 @@ def test_status_page_renders(tmp_path):
     buy_path(a, c)
     html = render(a)
     assert "ETH-Агент" in html and "LONG" in html
+
+
+def test_portfolio_two_sleeves_on_fake_exchange(tmp_path):
+    import yaml
+
+    from agent.live.settings import build_sleeves
+    from agent.live.status_server import render
+
+    raw = yaml.safe_load(open("config.example.yaml", encoding="utf-8"))
+    raw["portfolio"] = {"capital_usdt": 500, "preset": "збалансований"}
+    raw["v3"]["filters"] = {"trend_block_pct": None, "atr_min_pct": None, "atr_max_pct": None}
+    sleeves, cap = build_sleeves(raw)
+    c = FakeClient()
+    s = settings("testnet")
+    s = LiveSettings(pair=s.pair, mode="testnet", v3=s.v3, risk=s.risk, features=s.features, sleeves=sleeves,
+                     capital_usdt=cap)
+    broker = ExchangeBroker(c, "ETHUSDT", ETHUSDT_DEFAULT, "testnet", sleep=lambda *_: None)
+    j = Journal(tmp_path / "j.sqlite")
+    from agent.strategy import trend
+    agents = [runner.Agent(s, c, broker, tmp_path, j, Notifier(None, None), ETHUSDT_DEFAULT,
+                           strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
+                           features=sl.features, name=sl.name) for sl in sleeves]
+    pf = runner.Portfolio(agents)
+    for a in agents:
+        a.next_features = 10**15
+        a.m.feat = v3.Features(atr=ATR, anchor_high=D(1000), ema_dist_pct=D(5))
+    for px in (989, 980, 992):
+        c.t += 60_000
+        c.bid, c.ask = D(px) - D("0.1"), D(px) + D("0.1")
+        for a in agents:
+            a.m.feat_ts = c.t
+        pf.tick()
+    b1, cc = agents
+    assert cc.state.bots[0].phase is v3.Phase.LONG                      # режим вгору → C купив одразу
+    assert abs(cc.state.bots[0].eth * D(989) - D(150)) < D(2)           # ≈ 30 % від 500
+    assert b1.state.bots[0].phase is v3.Phase.LONG                      # B1 купив на відскоку
+    stops = [o for o in c.sent if o["type"] == "STOP_LOSS_LIMIT"]
+    longs_b1 = sum(1 for b in b1.state.bots if b.phase is v3.Phase.LONG)
+    assert len(stops) == longs_b1 and not cc.extra["stops"]             # стопи лише в B1; C — вихід за режимом
+    assert (tmp_path / "state_testnet_B1.json").exists() and (tmp_path / "state_testnet_C.json").exists()
+    html = render(pf)
+    assert "B1 · Відскок" in html and "C · Режимне" in html

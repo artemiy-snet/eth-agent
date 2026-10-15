@@ -23,10 +23,9 @@ form{{display:inline}} button{{font-size:15px;padding:10px 14px;border-radius:10
 </style></head><body>
 <h1>ETH-Агент · {mode}</h1><div class="mut">{when} · оновлення кожні 15 с</div>
 <div class="card"><div class="big">{price} USDT</div>
-<div>Капітал агента: <b>{equity}</b> із {start_equity} USDT · зв'язок: {conn}</div>
-<div>Стан: {killed}</div><div>Входи: {gate}</div></div>
-<div class="card"><b>Боти</b><table><tr><th>#</th><th>Фаза</th><th>USDT</th><th>ETH</th><th>Вхід</th><th>Стоп</th><th>Рівень</th></tr>{bots}</table></div>
-<div class="card"><b>Ознаки</b><div class="mut">ATR {atr} ({atr_pct} %) · нахил EMA200 {ema_slope_pct} % · максимум {anchor_high}</div></div>
+<div>Капітал: <b>{equity}</b> із {start_equity} USDT · зв'язок: {conn}</div>
+<div>Режим ринку (ціна vs EMA200 днів): {regime}</div></div>
+{sleeves}
 <div class="card"><b>Останні події</b><table>{events}</table></div>
 <div class="card"><b>Останні угоди</b><table>{trades}</table></div>
 <div class="card"><form method="post" action="/stop"><button class="stop">STOP — заборонити входи</button></form>
@@ -35,29 +34,50 @@ form{{display:inline}} button{{font-size:15px;padding:10px 14px;border-radius:10
 </body></html>"""
 
 
-def render(agent) -> str:
-    s = agent.last_status or {}
+def _sleeve_html(st: dict, title: str) -> str:
     e = html.escape
     bots = "".join(
         f"<tr><td>{b['id']}</td><td>{e(b['phase'])}{' ⚡' if b['armed'] else ''}</td><td>{b['usdt']}</td>"
         f"<td>{b['eth']}</td><td>{b['entry']}</td><td>{b['stop']}</td><td>{b['level']}</td></tr>"
-        for b in s.get("bots", []))
+        for b in st.get("bots", []))
+    killed = (f"<span class='bad'>KILL SWITCH: {e(st.get('kill_reason', ''))}</span>" if st.get("killed")
+              else "<span class='ok'>працює</span>")
+    gate = st.get("entry_gate", "—")
+    return (f"<div class='card'><b>{e(title)}</b> · капітал {st.get('equity', '—')} із {st.get('start_equity', '—')}"
+            f"<div>Стан: {killed} · входи: <span class='{'ok' if gate == 'відкрито' else 'warn'}'>{e(gate)}</span></div>"
+            f"<table><tr><th>#</th><th>Фаза</th><th>USDT</th><th>ETH</th><th>Вхід</th><th>Стоп</th><th>Рівень</th></tr>"
+            f"{bots}</table><div class='mut'>ATR {st.get('atr')} ({st.get('atr_pct')} %) · нахил EMA {st.get('ema_slope_pct')} % "
+            f"· максимум {st.get('anchor_high')}</div></div>")
+
+
+TITLES = {"v3": "Денний відскок", "A": "A · Денний відскок", "B": "B · Відскок розширений",
+          "B1": "B1 · Відскок розширений (ризик 1 %)", "C": "C · Режимне утримання"}
+
+
+def render(agent) -> str:
+    e = html.escape
+    sts = [a.last_status or {} for a in getattr(agent, "agents", [agent])]
+    s0 = sts[0] if sts else {}
+    total = sum(float(x.get("equity", 0) or 0) for x in sts)
+    start = sum(float(x.get("start_equity", 0) or 0) for x in sts)
+    sleeves = "".join(_sleeve_html(x, TITLES.get(x.get("sleeve", "v3"), x.get("sleeve", ""))) for x in sts)
     evs = "".join(f"<tr><td class='mut'>{time.strftime('%d.%m %H:%M', time.localtime(ts / 1000))}</td>"
                   f"<td class='{'bad' if lvl == 'ERROR' else 'warn' if lvl == 'WARN' else ''}'>{e(msg)}</td></tr>"
                   for ts, lvl, _, msg in agent.j.recent_events(15))
     trs = "".join(f"<tr><td>бот {t[0]}</td><td>{e(t[7])}</td><td>{float(t[3]):.2f} → {float(t[4]):.2f}</td>"
                   f"<td class='{'ok' if float(t[6]) >= 0 else 'bad'}'>{float(t[6]):+.2f}</td></tr>"
                   for t in agent.j.recent_trades(10)) or "<tr><td class='mut'>ще немає</td></tr>"
-    killed = (f"<span class='bad'>KILL SWITCH: {e(s.get('kill_reason', ''))}</span>" if s.get("killed")
-              else "<span class='ok'>працює</span>")
-    gate = s.get("entry_gate", "—")
+    dist = s0.get("ema_dist_pct")
+    try:
+        d = float(dist)
+        regime = f"<span class='{'ok' if d >= 0 else 'warn'}'>{d:+.1f} % — {'висхідний' if d >= 0 else 'низхідний'}</span>"
+    except (TypeError, ValueError):
+        regime = "<span class='mut'>рахується</span>"
     return PAGE.format(
-        mode=e(s.get("mode", "—")), when=time.strftime("%d.%m.%Y %H:%M:%S"), price=s.get("price", "—"),
-        equity=s.get("equity", "—"), start_equity=s.get("start_equity", "—"),
-        conn="<span class='ok'>є</span>" if s.get("connected") else "<span class='bad'>немає</span>",
-        killed=killed, gate=f"<span class='{'ok' if gate == 'відкрито' else 'warn'}'>{e(gate)}</span>",
-        bots=bots, atr=s.get("atr"), atr_pct=s.get("atr_pct"), ema_slope_pct=s.get("ema_slope_pct"),
-        anchor_high=s.get("anchor_high"), events=evs, trades=trs)
+        mode=e(s0.get("mode", "—")), when=time.strftime("%d.%m.%Y %H:%M:%S"), price=s0.get("price", "—"),
+        equity=f"{total:.2f}", start_equity=f"{start:.2f}",
+        conn="<span class='ok'>є</span>" if s0.get("connected") else "<span class='bad'>немає</span>",
+        regime=regime, sleeves=sleeves, events=evs, trades=trs)
 
 
 def serve(agent, port: int) -> ThreadingHTTPServer:

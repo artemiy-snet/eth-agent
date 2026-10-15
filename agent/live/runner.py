@@ -49,21 +49,26 @@ class Market:
 
 
 class Agent:
+    """Один рукав: одна стратегія на своїй частці капіталу."""
+
     def __init__(self, s: LiveSettings, client: Client, broker, home: Path, journal: Journal,
-                 notifier: Notifier, filters: SymbolFilters):
+                 notifier: Notifier, filters: SymbolFilters, strategy=v3, params=None, risk=None,
+                 features=None, name: str = ""):
         if s.mode not in ("paper", "testnet"):
             raise LiveDisabled("Режим live вимкнено: спершу testnet і paper (Біблія, розділ 9).")
         self.s, self.c, self.broker, self.home, self.j, self.n, self.f = s, client, broker, home, journal, notifier, filters
-        self.p = dataclasses.replace(s.v3, qty_step=filters.step_size, min_notional=filters.min_notional)
-        self.risk = RiskGuard(s.risk)
+        self.strat, self.name = strategy, name
+        self.fp = features or s.features
+        self.p = dataclasses.replace(params or s.v3, qty_step=filters.step_size, min_notional=filters.min_notional)
+        self.risk = RiskGuard(risk or s.risk)
         self.m = Market()
-        self.state_path = home / f"state_{s.mode}.json"
+        self.state_path = home / f"state_{s.mode}{'_' + name if name else ''}.json"
         loaded = load_state(self.state_path)
         if loaded:
             self.state, self.extra = loaded
             self.j.event("INFO", "start", "стан відновлено з файла")
         else:
-            self.state, self.extra = v3.init_state(self.p), {}
+            self.state, self.extra = self.strat.init_state(self.p), {}
         self.extra.setdefault("stops", {})        # bot_id → coid стоп-ордера на біржі
         self.extra.setdefault("entries", {})      # bot_id → [ts, ціна, вартість]
         self.extra.setdefault("pending", {})      # bot_id → намір у стані UNKNOWN
@@ -90,7 +95,7 @@ class Agent:
             self.m.connected = False
 
     def refresh_features(self, now: int) -> None:
-        fp = self.s.features
+        fp = self.fp
         try:
             k_atr = self.c.klines(self.s.pair, fp.atr_tf, limit=200)
             k_1h = self.c.klines(self.s.pair, "1h", limit=1000)
@@ -137,25 +142,28 @@ class Agent:
         if fill.side is Side.BUY:
             v3.on_fill(self.state, fill, atr=self.m.feat.atr)
             self.extra["entries"][key] = [fill.ts, fill.price, b.entry_cost]
-            msg = f"КУПІВЛЯ бот {fill.bot_id}: {fill.qty} ETH по {fill.price:.2f}, стоп {b.stop_px:.2f}"
+            msg = f"{self.tag()}КУПІВЛЯ бот {fill.bot_id}: {fill.qty} ETH по {fill.price:.2f}, стоп {b.stop_px:.2f}"
             self.j.event("INFO", "fill", msg)
             self.n.send(f"🟢 [{self.s.mode}] {msg}")
-            coid = self.broker.place_stop(fill.bot_id, b.eth, b.stop_px, fill.ts)
+            coid = self.broker.place_stop(fill.bot_id, b.eth, b.stop_px, fill.ts) if b.stop_px > 0 else None
             if coid:
                 self.extra["stops"][key] = coid
-            elif self.broker.name != "paper":
+            elif self.broker.name != "paper" and b.stop_px > 0:
                 self.j.event("WARN", "stop", f"стоп на біржі не поставлено для бота {fill.bot_id}; стоп веде агент")
         else:
             reason = reason or b.pending_reason or "?"
             v3.on_fill(self.state, fill)
             ets, epx, cost = self.extra["entries"].pop(key, [fill.ts, fill.price, ZERO])
             pnl = fill.qty * fill.price - fill.fee_quote - D(cost)
-            self.j.trade(fill.bot_id, int(ets), fill.ts, epx, fill.price, fill.qty, pnl, reason)
+            self.j.trade(fill.bot_id, int(ets), fill.ts, epx, fill.price, fill.qty, pnl, f"{self.tag()}{reason}".strip())
             self.risk.on_trade_closed(fill.ts, pnl)
             self.extra["stops"].pop(key, None)
-            msg = f"ПРОДАЖ бот {fill.bot_id} ({reason}): {fill.qty} ETH по {fill.price:.2f}, PnL {pnl:+.2f} USDT"
+            msg = f"{self.tag()}ПРОДАЖ бот {fill.bot_id} ({reason}): {fill.qty} ETH по {fill.price:.2f}, PnL {pnl:+.2f} USDT"
             self.j.event("INFO", "fill", msg)
             self.n.send(f"{'✅' if pnl >= 0 else '🔻'} [{self.s.mode}] {msg}")
+
+    def tag(self) -> str:
+        return f"[{self.name}] " if self.name else ""
 
     def handle_result(self, it: Intent, r: ExecResult) -> None:
         self.j.order(it.ts, r.coid, it.bot_id, it.side.value, r.status,
@@ -272,7 +280,7 @@ class Agent:
             self.risk.on_equity(now, self.equity(px))
             if self.risk.killed and not was_killed:
                 self.kill(now, self.risk.kill_reason)
-            self.state, new, blocked = v3.step(self.state, Tick(now, px), self.m.feat, self.p)
+            self.state, new, blocked = self.strat.step(self.state, Tick(now, px), self.m.feat, self.p)
             intents += new
             for it in intents:
                 veto = self.risk.check(it, self.context(now, px))
@@ -283,7 +291,7 @@ class Agent:
                 self.risk.on_order(now)
                 self.execute(it, now)
             st = self.status(now, px)
-            (self.home / f"status_{self.s.mode}.json").write_text(json.dumps(st, ensure_ascii=False, indent=1))
+            (self.home / f"status_{self.s.mode}{'_' + self.name if self.name else ''}.json").write_text(json.dumps(st, ensure_ascii=False, indent=1))
         self.extra["killed"] = self.risk.killed
         self.extra["kill_reason"] = self.risk.kill_reason
         self.extra["peak_equity"] = self.risk.peak_equity
@@ -292,19 +300,19 @@ class Agent:
     def status(self, now: int, px: Decimal) -> dict:
         f = self.m.feat
         self.last_status = {
-            "mode": self.s.mode, "pair": self.s.pair, "ts": now, "price": f"{px:.2f}",
+            "mode": self.s.mode, "pair": self.s.pair, "sleeve": self.name or "v3", "ts": now, "price": f"{px:.2f}",
             "bid": str(self.m.bid), "ask": str(self.m.ask), "connected": self.m.connected,
             "equity": f"{self.equity(px):.2f}",
-            "start_equity": f"{self.p.budget_usdt * self.p.bots:.2f}",
+            "start_equity": f"{self.p.budget_usdt * self.p.bots:.2f}", "ema_dist_pct": str(f.ema_dist_pct),
             "killed": self.risk.killed, "kill_reason": self.risk.kill_reason,
             "pause_until": self.risk.pause_until, "pause_reason": self.risk.pause_reason,
             "atr": str(f.atr), "atr_pct": str(f.atr_pct), "ema_slope_pct": str(f.ema_slope_pct),
-            "anchor_high": str(f.anchor_high), "entry_gate": v3.entry_gate(f, self.p) or "відкрито",
+            "anchor_high": str(f.anchor_high), "entry_gate": self.strat.entry_gate(f, self.p) or "відкрито",
             "bots": [{"id": b.bot_id, "phase": b.phase.value, "usdt": f"{b.usdt:.2f}", "eth": f"{b.eth:.5f}",
                       "entry": f"{b.entry_px:.2f}" if b.entry_px else "", "stop": f"{b.stop_px:.2f}" if b.stop_px else "",
                       "armed": b.buy_armed or b.sell_armed,
                       "level": f"{(f.anchor_high - D(b.bot_id) * self.p.interval_atr * f.atr + self.p.buy.limit_bot * f.atr):.2f}"
-                      if f.atr and f.anchor_high else ""}
+                      if f.atr and f.anchor_high and hasattr(self.p, "interval_atr") else ""}
                      for b in self.state.bots],
         }
         return self.last_status
@@ -318,6 +326,65 @@ class Agent:
             try:
                 self.tick()
             except Exception as e:                       # noqa: BLE001 — нічого не ковтаємо мовчки
+                self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
+                self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
+            time.sleep(max(1.0, self.s.poll_s - (time.time() - t0)))
+
+
+class Portfolio:
+    """Кілька рукавів в одному процесі: спільні STOP-файли, Telegram і звірка балансів на біржі."""
+
+    def __init__(self, agents: list[Agent]):
+        self.agents = agents
+        a0 = agents[0]
+        self.s, self.home, self.j, self.n, self.broker = a0.s, a0.home, a0.j, a0.n, a0.broker
+        self.next_reconcile = 0
+        for a in agents:
+            a.next_reconcile = 10**18      # звірка спільна — див. reconcile()
+
+    @property
+    def last_status(self) -> dict:
+        return {"portfolio": [a.last_status for a in self.agents]}
+
+    def reconcile(self) -> None:
+        bal = self.broker.balances()
+        if bal is None:
+            return
+        need_eth = sum((b.eth for a in self.agents for b in a.state.bots), ZERO)
+        need_usdt = sum((b.usdt for a in self.agents for b in a.state.bots), ZERO)
+        short = []
+        if need_eth > 0 and bal.get("ETH", ZERO) < need_eth * D("0.995"):
+            short.append((need_eth - bal.get("ETH", ZERO)) / need_eth * HUNDRED)
+        if need_usdt > 0 and bal.get("USDT", ZERO) < need_usdt * D("0.995"):
+            short.append((need_usdt - bal.get("USDT", ZERO)) / need_usdt * HUNDRED)
+        diff = max(short) if short else ZERO
+        for a in self.agents:
+            a.balance_diff = diff
+        if short:
+            self.j.event("ERROR", "reconcile", f"на біржі менше, ніж думає портфель: {diff:.2f}%")
+
+    def tick(self) -> None:
+        now = self.agents[0].now()
+        if now >= self.next_reconcile and self.broker.name != "paper":
+            self.reconcile()
+            self.next_reconcile = now + self.s.reconcile_every_s * 1000
+        for a in self.agents:
+            a.tick()
+
+    def clear_kill(self) -> None:
+        for a in self.agents:
+            a.clear_kill()
+
+    def run(self, stop_after_s: int | None = None) -> None:
+        t_end = time.time() + stop_after_s if stop_after_s else None
+        names = ", ".join(a.name for a in self.agents)
+        self.j.event("INFO", "start", f"портфель запущено ({names}), режим {self.s.mode}")
+        self.n.send(f"▶️ ETH-Агент: портфель {names}, режим {self.s.mode}")
+        while t_end is None or time.time() < t_end:
+            t0 = time.time()
+            try:
+                self.tick()
+            except Exception as e:                       # noqa: BLE001
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
             time.sleep(max(1.0, self.s.poll_s - (time.time() - t0)))
@@ -339,7 +406,7 @@ def read_secrets(home: Path) -> dict[str, str]:
     return out
 
 
-def build(settings: LiveSettings, home: Path) -> Agent:
+def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     home.mkdir(parents=True, exist_ok=True)
     sec = read_secrets(home)
     if settings.mode not in ("paper", "testnet"):
@@ -358,4 +425,10 @@ def build(settings: LiveSettings, home: Path) -> Agent:
         broker = PaperBroker(settings.v3.fee_pct, filters)
     else:
         broker = ExchangeBroker(client, settings.pair, filters, settings.mode, settings.stop_limit_buffer_pct)
-    return Agent(settings, client, broker, home, journal, notifier, filters)
+    if not settings.sleeves:
+        return Agent(settings, client, broker, home, journal, notifier, filters)
+    from agent.strategy import trend
+    agents = [Agent(settings, client, broker, home, journal, notifier, filters,
+                    strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
+                    features=sl.features, name=sl.name) for sl in settings.sleeves]
+    return Portfolio(agents)

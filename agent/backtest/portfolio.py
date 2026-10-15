@@ -14,27 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-# Рукави — фіксовані гіпотези з docs/strategies.md (не підбираються під результат)
-SLEEVES: dict[str, dict] = {
-    "A": {"strategy": "v3", "label": "Денний відскок (поточний)", "set": []},
-    "B": {"strategy": "v3", "label": "Відскок розширений",
-          "set": ["v3.filters.atr_max_pct=15", "v3.max_hold_h=168"]},
-    "B1": {"strategy": "v3", "label": "Відскок розширений, ризик 1 %",
-           "set": ["v3.filters.atr_max_pct=15", "v3.max_hold_h=168", "v3.risk_per_trade_pct=1",
-                   "risk.max_open_risk_pct=5"]},
-    "C": {"strategy": "trend", "label": "Режимне утримання (100 % рукава, EMA200d)",
-          "set": ["trend.alloc_pct=100", "trend.breakout=false", "trend.k_stop_atr=0", "trend.k_trail_atr=0",
-                  "risk.max_dd_pct=100", "risk.daily_loss_pct=100", "risk.max_open_risk_pct=100",
-                  "risk.max_eth_share_pct=100"]},
-}
-
-PRESETS: dict[str, dict[str, float]] = {
-    "поточний": {"A": 1.0},
-    "обережний": {"B": 1.0},
-    "збалансований": {"B1": 0.7, "C": 0.3},
-    "агресивний": {"B1": 0.5, "C": 0.5},
-    "лише_режим": {"C": 1.0},
-}
+from agent.strategy.sleeves import PRESETS, SLEEVES  # noqa: E402,F401
 
 
 @dataclass

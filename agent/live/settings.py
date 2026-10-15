@@ -12,6 +12,7 @@ import yaml
 from agent.features.params import FeatureParams
 from agent.money import D
 from agent.risk.guard import RiskParams
+from agent.strategy.trend import TrendParams
 from agent.strategy.v3 import AtrPoint, V3Params
 
 V3_DEFAULTS = {
@@ -26,6 +27,22 @@ FEATURE_DEFAULTS = {"atr_tf": "1d", "atr_len": 14, "ema_len": 200, "ema_slope_h"
                     "regime_ema_days": 200}
 
 
+TREND_DEFAULTS = {"bots": 1, "budget_usdt": "500", "breakout_days": 20, "k_stop_atr": "3", "k_trail_atr": "3",
+                  "risk_per_trade_pct": "0.5", "regime_min_pct": "0", "regime_exit": True, "alloc_pct": None,
+                  "breakout": True, "fee_pct": "0.1"}
+
+
+@dataclass(frozen=True)
+class Sleeve:
+    """Рукав портфеля в живому агенті."""
+
+    name: str
+    strategy: str          # v3 | trend
+    params: object         # V3Params | TrendParams
+    risk: RiskParams
+    features: FeatureParams
+
+
 @dataclass(frozen=True)
 class LiveSettings:
     pair: str
@@ -38,6 +55,8 @@ class LiveSettings:
     reconcile_every_s: int = 300
     stop_limit_buffer_pct: Decimal = D("1.0")   # ліміт стоп-ордера нижче стоп-ціни на 1 %
     status_port: int = 8765
+    sleeves: tuple = ()          # порожньо — одна стратегія v3 з секції v3
+    capital_usdt: Decimal = D("500")
 
 
 def _merge(base: dict, over: dict | None) -> dict:
@@ -63,6 +82,44 @@ def v3_params(raw: dict, qty_step: Decimal = D("0.0001"), min_notional: Decimal 
         trend_block_pct=_dec_or_none(f.get("trend_block_pct")), atr_min_pct=_dec_or_none(f.get("atr_min_pct")),
         atr_max_pct=_dec_or_none(f.get("atr_max_pct")), regime_min_pct=_dec_or_none(f.get("regime_min_pct")),
     )
+
+
+def trend_params(raw: dict | None) -> TrendParams:
+    c = _merge(TREND_DEFAULTS, raw)
+    return TrendParams(bots=int(c["bots"]), budget_usdt=D(c["budget_usdt"]), k_stop_atr=D(c["k_stop_atr"]),
+                       k_trail_atr=D(c["k_trail_atr"]), risk_per_trade_pct=D(c["risk_per_trade_pct"]),
+                       regime_min_pct=_dec_or_none(c["regime_min_pct"]), regime_exit=bool(c["regime_exit"]),
+                       alloc_pct=_dec_or_none(c["alloc_pct"]), breakout=bool(c["breakout"]), fee_pct=D(c["fee_pct"]))
+
+
+def build_sleeves(raw: dict) -> tuple[tuple, Decimal]:
+    """Секція portfolio: {capital_usdt: 500, preset: збалансований} або {sleeves: {B1: 0.7, C: 0.3}}."""
+    import copy
+    import dataclasses
+
+    from agent.strategy.sleeves import PRESETS, SLEEVES, apply_overrides
+
+    pf = raw.get("portfolio") or {}
+    if not pf:
+        return (), D(500)
+    capital = D(pf.get("capital_usdt", 500))
+    weights = pf.get("sleeves") or PRESETS[pf.get("preset", "обережний")]
+    out = []
+    for name, w in weights.items():
+        sl = SLEEVES[name]
+        r = apply_overrides(copy.deepcopy(raw), list(sl["set"]))
+        share = capital * D(w)
+        fp = feature_params(r.get("features"))
+        if sl["strategy"] == "trend":
+            tp = trend_params(r.get("trend"))
+            tp = dataclasses.replace(tp, budget_usdt=share / tp.bots)
+            fp = dataclasses.replace(fp, atr_tf="1d", anchor_h=int(_merge(TREND_DEFAULTS, r.get("trend"))["breakout_days"]) * 24)
+            out.append(Sleeve(name, "trend", tp, risk_params(r.get("risk")), fp))
+        else:
+            vp = v3_params(r.get("v3"))
+            vp = dataclasses.replace(vp, budget_usdt=share / vp.bots)
+            out.append(Sleeve(name, "v3", vp, risk_params(r.get("risk")), fp))
+    return tuple(out), capital
 
 
 def risk_params(raw: dict | None) -> RiskParams:
@@ -96,4 +153,6 @@ def load(path: Path, mode: str | None = None) -> LiveSettings:
         reconcile_every_s=int(live.get("reconcile_every_s", 300)),
         stop_limit_buffer_pct=D(live.get("stop_limit_buffer_pct", "1.0")),
         status_port=int(live.get("status_port", 8765)),
+        sleeves=build_sleeves(raw)[0],
+        capital_usdt=build_sleeves(raw)[1],
     )

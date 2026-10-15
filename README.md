@@ -1,4 +1,4 @@
-# ETH-Агент · v0.9.1-beta
+# ETH-Агент · v0.9.2-beta
 
 Спотовий торговий агент ETHUSDT (Binance) для телефона (Android/Termux) з веб-панеллю.
 Джерело вимог — [Біблія](docs/BIBLE.md). Встановлення й щоденна робота — [docs/PHONE.md](docs/PHONE.md).
@@ -28,6 +28,8 @@ bash scripts/termux-install.sh
 bash scripts/run.sh
 ```
 Панель: http://127.0.0.1:8765
+
+Оновлення: новий архів у «Завантаження», далі . Покроково — [docs/INSTALL_UA.txt](docs/INSTALL_UA.txt).
 
 ## Розробка
 

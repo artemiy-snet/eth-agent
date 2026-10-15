@@ -43,7 +43,8 @@ button,input,select{font:inherit;color:inherit}
 .wrap{max-width:1180px;margin:0 auto;padding:0 16px}
 header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--page) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--ring)}
 .bar{display:flex;align-items:center;gap:10px;height:52px}
-.logo{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.2px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+@media (max-width:420px){.logo span{display:none}}
 .logo svg{width:22px;height:22px}
 .chip{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--raise);color:var(--ink-2)}
 .chip.paper{color:var(--s1)} .chip.testnet{color:var(--s4)}
@@ -55,6 +56,7 @@ nav.tabs{display:flex;gap:4px}
 nav.tabs button{border:0;background:transparent;padding:8px 12px;border-radius:10px;color:var(--ink-2);cursor:pointer;font-weight:600}
 nav.tabs button[aria-selected="true"]{background:var(--raise);color:var(--ink)}
 @media (max-width:760px){
+  header{backdrop-filter:none;background:var(--page)}   /* backdrop-filter робить шапку рамкою для position:fixed */
   nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--ring);padding:6px 6px calc(6px + env(safe-area-inset-bottom));justify-content:space-around}
   nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;padding:6px 2px}
   nav.tabs button svg{width:20px;height:20px}
@@ -190,7 +192,7 @@ ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
     <div class="spacer"></div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="ov" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg><span data-i18n="tab_ov">Огляд</span></button>
-      <button role="tab" data-tab="ai" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="tab_ai">Прогноз і новини</span></button>
+      <button role="tab" data-tab="ai" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="tab_ai_s">Прогноз</span></button>
       <button role="tab" data-tab="tr" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="tab_tr">Угоди</span></button>
       <button role="tab" data-tab="st" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="tab_st">Налаштування</span></button>
     </nav>
@@ -266,7 +268,7 @@ ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 "use strict";
 // ---------- i18n ----------
 const T = {
- uk:{app:"ETH-Агент",tab_ov:"Огляд",tab_ai:"Прогноз і новини",tab_tr:"Угоди",tab_st:"Налаштування",
+ uk:{app:"ETH-Агент",tab_ov:"Огляд",tab_ai:"Прогноз і новини",tab_ai_s:"Прогноз",tab_tr:"Угоди",tab_st:"Налаштування",
   price_chart:"Ціна ETH/USDT",next_events:"Найближчі події",equity_chart:"Капітал портфеля vs ETH",indexed:"індекс, старт = 100",
   sleeves:"Стратегії (рукави)",expect:"Очікування за бектестом (7 років)",calendar:"Календар макроподій США",
   ai_timeline:"Оцінки ШІ на графіку ціни",ai_timeline_hint:"крапка = оцінка, колір = режим",news:"Новини",
@@ -299,7 +301,7 @@ const T = {
   binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
   updated:"оновлено",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
   last_tick:"останній крок",next_ai:"ШІ через",ai_running:"ШІ аналізує…",armed:"зведено",pending:"ордер",watching:"стежить за ціною",bots_armed:"ботів зведено",positions_open:"позицій",regime_zone_up:"вище EMA200",regime_zone_down:"нижче EMA200"},
- en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_tr:"Trades",tab_st:"Settings",
+ en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_ai_s:"Outlook",tab_tr:"Trades",tab_st:"Settings",
   price_chart:"ETH/USDT price",next_events:"Upcoming events",equity_chart:"Portfolio equity vs ETH",indexed:"index, start = 100",
   sleeves:"Strategies (sleeves)",expect:"Backtest expectations (7 years)",calendar:"US macro calendar",
   ai_timeline:"AI assessments on the price chart",ai_timeline_hint:"dot = assessment, colour = regime",news:"News",

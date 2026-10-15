@@ -153,7 +153,12 @@ def _cmd_live(a) -> int:
         agent.clear_kill()
         print("Kill switch знято. Запусти агента знову.")
         return 0
-    srv = serve(agent, s.status_port, config_path=cfg)
+    try:
+        srv = serve(agent, s.status_port, config_path=cfg)
+    except OSError:
+        print(f"Порт {s.status_port} зайнятий — вже працює інший (можливо, старий) агент.\n"
+              f"Зупини його:  pkill -f agent.cli   і запусти знову:  bash scripts/run.sh")
+        return 4
     from agent import __version__
     print(f"ETH-Агент v{__version__} · режим {s.mode}")
     print(f"Панель: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")

@@ -34,6 +34,18 @@ TREND_DEFAULTS = {"bots": 1, "budget_usdt": "500", "breakout_days": 20, "k_stop_
                   "event_bots": 0, "event_before_h": None, "event_after_h": None}
 
 
+AI_DEFAULTS = {"risk_per_trade_pct": "3", "min_stop_pct": "1", "max_stop_pct": "12", "max_drift_pct": "1",
+               "max_hold_h": 168, "fee_pct": "0.1"}
+
+
+def ai_params(raw: dict | None):
+    from agent.strategy.ai_trader import AiParams
+    c = _merge(AI_DEFAULTS, raw)
+    return AiParams(risk_per_trade_pct=D(c["risk_per_trade_pct"]), min_stop_pct=D(c["min_stop_pct"]),
+                    max_stop_pct=D(c["max_stop_pct"]), max_drift_pct=D(c["max_drift_pct"]),
+                    max_hold_h=int(c["max_hold_h"]), fee_pct=D(c["fee_pct"]))
+
+
 @dataclass(frozen=True)
 class Sleeve:
     """Рукав портфеля в живому агенті."""
@@ -120,7 +132,10 @@ def build_sleeves(raw: dict) -> tuple[tuple, Decimal]:
         r = apply_overrides(copy.deepcopy(raw), list(sl["set"]))
         share = capital * D(w)
         fp = feature_params(r.get("features"))
-        if sl["strategy"] == "trend":
+        if sl["strategy"] == "ai":
+            ap = dataclasses.replace(ai_params(r.get("ai_trader")), budget_usdt=share)
+            out.append(Sleeve(name, "ai", ap, risk_params(r.get("risk")), fp))
+        elif sl["strategy"] == "trend":
             tp = trend_params(r.get("trend"))
             tp = dataclasses.replace(tp, budget_usdt=share / tp.bots)
             fp = dataclasses.replace(fp, atr_tf="1d", anchor_h=int(_merge(TREND_DEFAULTS, r.get("trend"))["breakout_days"]) * 24)

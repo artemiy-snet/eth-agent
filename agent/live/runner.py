@@ -82,6 +82,8 @@ class Agent:
         self.last_status: dict = {}
         self.analyst = None          # ШІ-аналітик, див. build()
         self.ai_mult = D(1)          # множник розміру нових входів від ШІ (≤ 1; лише зменшує ризик)
+        self.ai_signal = None        # перевірена ідея ШІ для рукава ai — діє один крок
+        self.extra.setdefault("ai_pnls", [])
 
     # --- дані ----------------------------------------------------------------------------
     def now(self) -> int:
@@ -142,7 +144,7 @@ class Agent:
         b = self.state.bots[fill.bot_id]
         key = str(fill.bot_id)
         if fill.side is Side.BUY:
-            v3.on_fill(self.state, fill, atr=self.m.feat.atr)
+            self.strat.on_fill(self.state, fill, atr=self.m.feat.atr)
             self.extra["entries"][key] = [fill.ts, fill.price, b.entry_cost]
             msg = f"{self.tag()}КУПІВЛЯ бот {fill.bot_id}: {fill.qty} ETH по {fill.price:.2f}, стоп {b.stop_px:.2f}"
             self.j.event("INFO", "fill", msg)
@@ -154,11 +156,13 @@ class Agent:
                 self.j.event("WARN", "stop", f"стоп на біржі не поставлено для бота {fill.bot_id}; стоп веде агент")
         else:
             reason = reason or b.pending_reason or "?"
-            v3.on_fill(self.state, fill)
+            self.strat.on_fill(self.state, fill)
             ets, epx, cost = self.extra["entries"].pop(key, [fill.ts, fill.price, ZERO])
             pnl = fill.qty * fill.price - fill.fee_quote - D(cost)
             self.j.trade(fill.bot_id, int(ets), fill.ts, epx, fill.price, fill.qty, pnl, f"{self.tag()}{reason}".strip())
             self.risk.on_trade_closed(fill.ts, pnl)
+            if getattr(self.strat, "__name__", "").endswith("ai_trader"):
+                self.extra["ai_pnls"].append(str(pnl))
             self.extra["stops"].pop(key, None)
             msg = f"{self.tag()}ПРОДАЖ бот {fill.bot_id} ({reason}): {fill.qty} ETH по {fill.price:.2f}, PnL {pnl:+.2f} USDT"
             self.j.event("INFO", "fill", msg)
@@ -282,7 +286,14 @@ class Agent:
             self.risk.on_equity(now, self.equity(px))
             if self.risk.killed and not was_killed:
                 self.kill(now, self.risk.kill_reason)
-            self.state, new, blocked = self.strat.step(self.state, Tick(now, px), self.m.feat, self.p)
+            feat = self.m.feat
+            if self.ai_signal is not None:
+                feat = dataclasses.replace(feat, ai_signal=self.ai_signal)
+                self.ai_signal = None
+            self.state, new, blocked = self.strat.step(self.state, Tick(now, px), feat, self.p)
+            if feat.ai_signal is not None:
+                why = blocked[0][1] if blocked else ("виконується" if new else "без дії")
+                self.j.event("INFO", "ai_trade", f"{self.tag()}сигнал {feat.ai_signal.get('id')}: {why}")
             intents += new
             for it in intents:
                 if it.side is Side.BUY and self.ai_mult < 1:
@@ -381,7 +392,40 @@ def book_for_analyst(agents: list, journal) -> dict:
     trades = [{"bot": t[0], "entry_px": t[3], "exit_px": t[4], "pnl": t[6], "reason": t[7]}
               for t in journal.recent_trades(10)]
     warn = [m for _, lvl, _, m in journal.recent_events(40) if lvl in ("WARN", "ERROR")][:8]
-    return {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades, "recent_warnings": warn}
+    out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades, "recent_warnings": warn}
+    ai = ai_agent(agents)
+    if ai is not None and ai.m.bid > 0:
+        from agent.strategy import ai_trader as at
+        px = (ai.m.bid + ai.m.ask) / 2
+        f, b = ai.m.feat, ai.state.bots[0]
+        lo, hi = at.stop_bounds(f, ai.p)
+        pnls = [D(x) for x in ai.extra.get("ai_pnls", [])]
+        out["ai_sleeve"] = {
+            "phase": b.phase.value, "equity": f"{ai.equity(px):.2f}", "budget": f"{ai.p.budget_usdt:.2f}",
+            "entry": f"{b.entry_px:.2f}" if b.entry_px else None, "stop": f"{b.stop_px:.2f}" if b.stop_px else None,
+            "setups_now": [k for k in at.SETUPS if at.setup_holds(k, px, f, ai.p) is None],
+            "setups_explained": at.SETUPS, "sell_reasons": at.SELL_REASONS,
+            "stop_range_pct": [f"{lo:.2f}", f"{hi:.2f}"], "closed_trades": len(pnls),
+            "pnl_total": f"{sum(pnls, ZERO):.2f}"}
+    return out
+
+
+def ai_agent(agents: list):
+    return next((a for a in agents if getattr(a.strat, "__name__", "").endswith("ai_trader")), None)
+
+
+def ai_gate(an, ai, j, n) -> None:
+    """Автовимкнення ШІ-трейдера: після ≥ 10 угод profit factor < 1 → лише аналітика, сповіщення."""
+    pnls = [D(x) for x in ai.extra.get("ai_pnls", [])]
+    if an.trading_disabled or len(pnls) < 10:
+        return
+    win = sum((x for x in pnls if x > 0), ZERO)
+    loss = -sum((x for x in pnls if x < 0), ZERO)
+    if loss > 0 and win / loss < 1:
+        an.trading_disabled = f"PF {win / loss:.2f} < 1 після {len(pnls)} угод"
+        ai.extra["ai_disabled"] = an.trading_disabled
+        j.event("WARN", "ai_trade", f"ШІ-трейдер вимкнено: {an.trading_disabled}. Відкриті позиції ведуть стоп і час.")
+        n.send(f"🧠⛔ ШІ-трейдер вимкнено: {an.trading_disabled}. Увімкнути знову — лише рішенням Командира.")
 
 
 def ai_step(owner, agents: list, now: int) -> None:
@@ -392,6 +436,28 @@ def ai_step(owner, agents: list, now: int) -> None:
     mult = an.size_mult(now)
     for a in agents:
         a.ai_mult = mult
+    ai = ai_agent(agents)
+    if ai is not None:
+        if ai.extra.get("ai_disabled") and not an.trading_disabled:
+            an.trading_disabled = ai.extra["ai_disabled"]
+        ai_gate(an, ai, owner.j, owner.n)
+        if an.precheck is None:
+            from agent.strategy import ai_trader as at
+
+            def precheck(sig, _a=ai):
+                if _a.m.bid <= 0:
+                    return "немає ціни"
+                b = _a.state.bots[0]
+                if sig["action"] == "BUY" and b.phase is not v3.Phase.FLAT:
+                    return "рукав уже в позиції"
+                if sig["action"] == "SELL" and b.phase is not v3.Phase.LONG:
+                    return "рукав без позиції"
+                if _a.risk.killed:
+                    return "kill switch рукава"
+                return at.check_signal(sig, (_a.m.bid + _a.m.ask) / 2, _a.m.feat, _a.p, _a.now())
+            an.precheck = precheck
+        if an.signal is not None:
+            ai.ai_signal = an.pop_signal(now)
     killed = any(a.risk.killed for a in agents)
     force = "kill switch" if killed and not getattr(owner, "_ai_saw_kill", False) else ""
     owner._ai_saw_kill = killed
@@ -510,12 +576,13 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     else:
         broker = ExchangeBroker(client, settings.pair, filters, settings.mode, settings.stop_limit_buffer_pct)
     from agent.analyst import shadow
+    from agent.strategy import ai_trader
     if not settings.sleeves:
         obj = Agent(settings, client, broker, home, journal, notifier, filters)
     else:
         from agent.strategy import trend
         agents = [Agent(settings, client, broker, home, journal, notifier, filters,
-                        strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
+                        strategy={"trend": trend, "ai": ai_trader}.get(sl.strategy, v3), params=sl.params, risk=sl.risk,
                         features=sl.features, name=sl.name) for sl in settings.sleeves]
         obj = Portfolio(agents)
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)

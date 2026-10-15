@@ -80,6 +80,7 @@ class Features:
     ema_dist_pct: Decimal | None = None      # режим: ціна відносно 200-денної EMA, %
     event_in_h: float | None = None          # годин до наступної макроподії (календар, agent/features/calendar.py)
     event_ago_h: float | None = None         # годин після останньої
+    ai_signal: dict | None = None            # перевірена ідея ШІ для рукава ai (agent/strategy/ai_trader.py)
 
 
 @dataclass

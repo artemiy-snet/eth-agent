@@ -302,3 +302,37 @@ def test_ai_caution_halves_entry_and_exits_untouched(tmp_path):
     open(tmp_path / "STOP_FLATTEN", "w").write("x")
     step(a, c, 992)
     assert c.sent[-1]["side"] == "SELL"
+
+
+def test_ai_sleeve_executes_vetted_signal_with_exchange_stop(tmp_path):
+    import yaml
+
+    from agent.live.settings import build_sleeves
+    from agent.live.status_server import render
+    from agent.strategy import ai_trader
+
+    raw = yaml.safe_load(open("config.portfolio.yaml", encoding="utf-8"))
+    raw["portfolio"] = {"capital_usdt": 500, "sleeves": {"D": 1.0}}
+    sleeves, cap = build_sleeves(raw)
+    c = FakeClient()
+    s0 = settings("testnet")
+    s = LiveSettings(pair=s0.pair, mode="testnet", v3=s0.v3, risk=s0.risk, features=s0.features, sleeves=sleeves,
+                     capital_usdt=cap)
+    broker = ExchangeBroker(c, "ETHUSDT", ETHUSDT_DEFAULT, "testnet", sleep=lambda *_: None)
+    j = Journal(tmp_path / "j.sqlite")
+    a = runner.Agent(s, c, broker, tmp_path, j, Notifier(None, None), ETHUSDT_DEFAULT, strategy=ai_trader,
+                     params=sleeves[0].params, risk=sleeves[0].risk, features=sleeves[0].features, name="D")
+    a.next_features = 10**15
+    a.m.feat = v3.Features(atr=D(20), atr_pct=D(2), anchor_high=D(1030), ema_slope_pct=D(0), ema_dist_pct=D(-3))
+    step(a, c, 1000)
+    assert c.sent == []                                                   # без ідеї ШІ — нічого
+    a.ai_signal = {"action": "BUY", "setup": "dip_bounce", "size_pct": 50, "stop_pct": 5, "take_pct": None,
+                   "price": "1000.00", "expires": c.t + 10**7, "id": "ai1"}
+    step(a, c, 1000)
+    assert [o["type"] for o in c.sent] == ["MARKET", "STOP_LOSS_LIMIT"]
+    assert D(c.sent[1]["stopPrice"]) == D("950.00")
+    assert D(c.sent[0]["quoteOrderQty"]) <= D(250)                         # ≤ 50 % рукава
+    step(a, c, 1000)
+    assert len(c.sent) == 2 and a.ai_signal is None                        # сигнал одноразовий
+    assert "сигнал ai1" in " ".join(m for _, _, _, m in j.recent_events(10))
+    assert "D" in render(a)

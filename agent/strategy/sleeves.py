@@ -30,12 +30,21 @@ SLEEVES["C_ев_все"] = {**SLEEVES["C"], "label": "Режимне утрим�
                        "set": SLEEVES["C"]["set"] + ["trend.bots=1", "trend.event_bots=1",
                                                      "trend.event_before_h=24", "trend.event_after_h=2"]}
 
+# ШІ-трейдер (Біблія 7.6): ідеї ШІ лише за умовами перевірених стратегій, три перевірки. Бектесту не має —
+# LLM «знає» історію, тому чесно перевіряється лише вперед: paper/testnet і результат у журналі.
+SLEEVES["D"] = {"strategy": "ai", "label": "ШІ-трейдер (за умовами стратегій A/B/C, з перевіркою)",
+                "set": ["risk.max_dd_pct=15", "risk.daily_loss_pct=5", "risk.max_open_risk_pct=100",
+                        "risk.max_eth_share_pct=100"]}
+BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai"}
+
 PRESETS: dict[str, dict[str, float]] = {
     "поточний": {"A": 1.0},
     "обережний": {"B": 1.0},
     "збалансований": {"B1": 0.7, "C": 0.3},
     "агресивний": {"B1": 0.5, "C": 0.5},
     "лише_режим": {"C": 1.0},
+    "збалансований+ші": {"B1": 0.6, "C": 0.3, "D": 0.1},
+    "агресивний+ші": {"B1": 0.4, "C": 0.5, "D": 0.1},
     # макроподії — для порівняння з базовими
     "поточний_ев": {"A_ев": 1.0},
     "обережний_ев": {"B_ев": 1.0},
@@ -48,7 +57,8 @@ PRESETS: dict[str, dict[str, float]] = {
 }
 
 BASE_PRESETS = ["поточний", "обережний", "збалансований", "агресивний", "лише_режим"]
-GROUPS = {"all": list(PRESETS), "base": BASE_PRESETS, "macro": list(PRESETS)}
+_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE]
+GROUPS = {"all": _BT, "base": BASE_PRESETS, "macro": _BT}
 
 
 def apply_overrides(raw: dict, overrides: list[str]) -> dict:

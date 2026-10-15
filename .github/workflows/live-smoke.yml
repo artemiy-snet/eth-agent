@@ -65,6 +65,6 @@ jobs:
           lines = [f"{p.split('_')[-1][:-5]}: капітал {s['equity']} · входи {s['entry_gate']} · режим {s['ema_dist_pct']} % · "
                    f"фази {[b['phase'] for b in s['bots']]}" for p, s in sts.items()]
           print("::notice title=Paper portfolio::" + "%0A".join(lines + [m for _, m in ev[-6:]]))
-          assert len(sts) == 2 and not bad, (sts.keys(), bad)
+          assert len(sts) == 3 and not bad, (sts.keys(), bad)
           PY
 

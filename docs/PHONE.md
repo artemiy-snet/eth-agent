@@ -18,12 +18,12 @@
 
 ## 2. Код агента
 
-1. У браузері телефона: `github.com/artemiy-snet/eth-agent` → зелена кнопка **Code** → **Download ZIP**.
-   Файл `eth-agent-main.zip` з'явиться в «Завантаженнях».
+1. У браузері телефона (з входом у GitHub): `github.com/artemiy-snet/eth-agent/releases` → найновіша версія → **eth-agent-beta.zip**.
+   (Або Code → Download ZIP — тоді файл `eth-agent-main.zip`.)
 2. У Termux:
    ```
    pkg install -y unzip
-   cp ~/storage/downloads/eth-agent-main.zip ~ && cd ~ && unzip -o eth-agent-main.zip
+   cp ~/storage/downloads/eth-agent-beta.zip ~ && cd ~ && unzip -o eth-agent-beta.zip
    cd ~/eth-agent-main
    bash scripts/termux-install.sh
    ```

@@ -120,3 +120,15 @@ def test_no_entries_without_features():
     p = P()
     s, it, _ = feed(v3.init_state(p), [989, 980, 992], p, f=v3.Features(atr=None))
     assert it == [] and not s.bots[0].buy_armed
+
+
+def test_profits_are_reinvested_compounding():
+    """Прибуток збільшує наступну позицію: розмір = ризик% від ПОТОЧНОГО капіталу, бюджет бота = його USDT з прибутком."""
+    p = P(risk_per_trade_pct=D("0.5"))
+    s = v3.init_state(p)
+    s, it1, _ = feed(s, [989, 980, 992], p)
+    q1 = it1[0].qty
+    s, out, _ = feed(s, [1013, 1060, 1044], p, t0=10 * 60_000)        # прибутковий вихід
+    assert out and out[-1].side is Side.SELL and s.bots[0].usdt > D(100)
+    s, it2, _ = feed(s, [989, 980, 992], p, t0=100 * 60_000)           # той самий сетап знову
+    assert it2[0].qty > q1

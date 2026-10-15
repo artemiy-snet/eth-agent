@@ -42,6 +42,16 @@ bash scripts/run.sh paper
 
 Зупинити агента: у Termux `Ctrl+C` (на клавіатурі Termux — кнопка CTRL, потім C).
 
+## 3а. Портфель (кілька стратегій одночасно)
+
+```
+cd ~/eth-agent-main
+bash scripts/run.sh paper config.portfolio.yaml
+```
+
+Склад задається в кінці `config.portfolio.yaml` (`preset: збалансований` = 70 % «відскок розширений» + 30 % «режимне утримання»).
+На сторінці статусу — загальний капітал, режим ринку і окремий блок на кожну стратегію.
+
 ## 4. Testnet (тестові гроші, справжні ордери)
 
 1. Відкрий **testnet.binance.vision** → **Log In with GitHub** → **Generate HMAC_SHA256 Key**.

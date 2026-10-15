@@ -54,3 +54,17 @@ jobs:
               f.write("## Paper smoke\n\n" + msg + "\n\n" + "\n".join(f"- {l} {k}: {m}" for l, k, m in ev[-30:]) + "\n")
           assert not bad, bad
           PY
+      - name: Paper-портфель (2 хв)
+        run: |
+          eth-agent live --mode paper --config config.portfolio.yaml --home ./smoke_pf --minutes 2
+          python - <<'PY'
+          import json, sqlite3, glob
+          ev = sqlite3.connect("smoke_pf/journal_paper.sqlite").execute("select level, msg from events").fetchall()
+          bad = [e for e in ev if e[0] == "ERROR"]
+          sts = {p: json.load(open(p)) for p in sorted(glob.glob("smoke_pf/status_paper_*.json"))}
+          lines = [f"{p.split('_')[-1][:-5]}: капітал {s['equity']} · входи {s['entry_gate']} · режим {s['ema_dist_pct']} % · "
+                   f"фази {[b['phase'] for b in s['bots']]}" for p, s in sts.items()]
+          print("::notice title=Paper portfolio::" + "%0A".join(lines + [m for _, m in ev[-6:]]))
+          assert len(sts) == 2 and not bad, (sts.keys(), bad)
+          PY
+

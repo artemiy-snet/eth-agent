@@ -1,0 +1,63 @@
+# Скопіюйте в config.yaml (він у .gitignore) і змініть під себе.
+# Ключі API тут НЕ зберігаються — лише через «Налаштування» панелі (Біблія, розділ 12).
+
+agent:
+  pair: ETHUSDT
+  mode: backtest          # backtest | paper | shadow | live
+  params_version: v1
+  data_dir: data
+
+# Параметри v2.02 для legacy_v2. Реальні налаштування v2.02 не збереглися,
+# тому стартові значення взяті із заводських значень збірки (пороги ±0,3 %, вікно ±0,1 %)
+# і масиву з Біблії (5 ботів × 1,5 %, 100 USDT). Це відправна точка для бектесту, не рекомендація.
+legacy:
+  base_price: null        # null = сітка центрується на першій ціні періоду
+  bots: 5
+  interval_pct: 1.5
+  budget_usdt_per_bot: 100
+  step_sell_pct: 0.3      # точка продажу на +0,3 % від рівня бота
+  buy:  { limit_up: 0.3, limit_bot: -0.3, action_up: 0.1, action_bot: -0.1 }
+  sell: { limit_up: 0.3, limit_bot: -0.3, action_up: 0.1, action_bot: -0.1 }
+  greedy_buy: 0
+  greedy_sell: 0
+  sell_on_any_level: false
+  fee_pct: 0.1
+
+# v3 — основна стратегія. Профіль «денний» обрано за walk-forward №2 (3 роки, 37 варіантів):
+# на ATR 1h/4h переваги немає (PF < 1), на ATR 1d — усі 18 варіантів прибуткові (PF 2,1–2,7).
+# Вибірка ще мала (~45 угод за 3 роки) — профіль має пройти перевірку на 7 роках (Біблія, розділ 9).
+v3:
+  bots: 5
+  interval_atr: 1.0         # бот i зводиться після падіння на (1 + i×interval) ATR від максимуму
+  budget_usdt_per_bot: 100
+  buy:  { limit_up: 1.0, limit_bot: -1.0, action_up: 0.4, action_bot: 0.1 }
+  sell: { limit_up: 2.0, limit_bot: -1.0, action_up: 0.5, action_bot: -0.4 }   # E2: зведення +2 ATR, відкат 1,5
+  min_edge_pct: 0.15
+  fee_pct: 0.1
+  k_stop_atr: 2
+  max_hold_h: 72
+  risk_per_trade_pct: 0.5   # збільшення — тільки рішенням Командира
+  filters: { trend_block_pct: -3, atr_min_pct: 0.3, atr_max_pct: 4.0 }   # з денним ATR відсіює дні високої волатильності — гіпотеза до перевірки
+
+features: { atr_tf: 1d, atr_len: 14, ema_len: 200, ema_slope_h: 24, anchor_h: 24 }
+
+risk:                       # розділ 5 Біблії
+  max_eth_share_pct: 60
+  daily_loss_pct: 2
+  max_dd_pct: 10            # kill switch; у бектесті після нього нових входів немає до кінця періоду
+  max_consecutive_losses: 5
+  losses_pause_h: 4
+  max_orders_per_hour: 20
+  max_move_1m_pct: 3
+  move_pause_min: 15
+  max_spread_pct: 0.1
+  max_open_risk_pct: 2      # сума ризиків до стопів по всіх ботах ≤ 2 % капіталу
+
+backtest: { slippage_pct: 0.05 }
+
+# --- Портфель (живий агент) ------------------------------------------------------------
+# Кілька стратегій на частках капіталу. Пресети: поточний | обережний | збалансований | агресивний | лише_режим
+# (склад — agent/strategy/sleeves.py, результати — docs/strategies.md). Для paper-перевірки — збалансований.
+portfolio:
+  capital_usdt: 500
+  preset: збалансований

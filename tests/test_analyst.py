@@ -173,3 +173,60 @@ def test_workspace_header_and_error_explained(tmp_path, monkeypatch):
     a = shadow.from_settings({}, {"ANTHROPIC_API_KEY": "k", "ANTHROPIC_WORKSPACE_ID": "wrkspc_9"}, J(), tmp_path)
     a.assess(0, {"price": "1"}, complete=fake)
     assert seen["ws"] == "wrkspc_9"
+
+
+def test_robust_call_retries_then_falls_back(tmp_path):
+    from agent.analyst import claude as cl
+    a = shadow.ShadowAnalyst(api_key="k", model="claude-opus-5-5", journal=J(), home=tmp_path, sleep=lambda s: None)
+    seq = [cl.ClaudeError("HTTP 529 overloaded", 529, True), cl.ClaudeError("мережа", 0, True), "ok"]
+    calls = []
+
+    def fake(k, m, sy, u):
+        calls.append(m)
+        x = seq.pop(0)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    assert a._call(fake, "s", "u") == "ok" and len(calls) == 3
+    calls.clear()
+
+    def notfound(k, m, sy, u):
+        calls.append(m)
+        if m == "claude-opus-5-5":
+            raise cl.ClaudeError("HTTP 404 model", 404, False)
+        return "fallback"
+    assert a._call(notfound, "s", "u") == "fallback" and calls == ["claude-opus-5-5", "claude-sonnet-5-5"]
+
+    def bad_key(k, m, sy, u):
+        raise cl.ClaudeError("HTTP 401", 401, False)
+    with pytest.raises(cl.ClaudeError):
+        a._call(bad_key, "s", "u")
+
+
+def test_lenient_normalize_and_json_repair(tmp_path, monkeypatch):
+    monkeypatch.setattr(news, "fetch", lambda feeds, since: ([], []))
+    j = J()
+    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=j, home=tmp_path, sleep=lambda s: None)
+    sloppy = {"news_regime": "risk-off", "confidence": "70%", "facts": "одне речення", "anomalies": None,
+              "events_ahead": {"what": "FOMC"}, "positions_review": {"C": "ok"}}
+    rec = a.assess(0, {"price": "1"}, complete=lambda *x: "```json\n" + json.dumps(sloppy) + "\n```")
+    assert rec["news_regime"] == "RISK_OFF" and rec["confidence"] == 0.7 and rec["facts"] == ["одне речення"]
+    answers = ['{"news_regime": "NORMAL", "confidence": 0.5, "facts": ["x"', json.dumps(GOOD)]
+    rec = a.assess(0, {"price": "1"}, complete=lambda *x: answers.pop(0))
+    assert rec["news_regime"] == "CAUTION" and a.fail_count == 0 and a.ok_at == 0
+
+
+def test_failure_backoff_grows(tmp_path, monkeypatch):
+    monkeypatch.setattr(news, "fetch", lambda feeds, since: ([], []))
+    from agent.analyst import claude as cl
+    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=J(), home=tmp_path, every_h=12, sleep=lambda s: None)
+
+    def boom(*x):
+        raise cl.ClaudeError("HTTP 401", 401, False)
+    a.assess = lambda now, m, book=None, reason="": a.__class__.assess(a, now, m, complete=boom, book=book, reason=reason)
+    a.next_run = 10**15
+    a._run(0, {"price": "1"})
+    assert a.next_run == 15 * 60_000 and a.fail_count == 1 and "401" in a.last_error
+    a.next_run = 10**15
+    a._run(0, {"price": "1"})
+    assert a.next_run == 30 * 60_000

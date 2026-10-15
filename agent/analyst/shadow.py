@@ -118,6 +118,53 @@ def validate_proposal(d) -> dict | None:
     return out
 
 
+_REGIME_ALIASES = {"RISK-OFF": "RISK_OFF", "RISKOFF": "RISK_OFF", "RISK OFF": "RISK_OFF", "НОРМА": "NORMAL",
+                   "NORMAL ": "NORMAL", "ОБЕРЕЖНО": "CAUTION"}
+
+
+def normalize(d) -> dict:
+    """Поблажливо виправляє дрібні відхилення моделі від схеми (рядок замість списку, 64 замість 0.64 тощо).
+    Суть не вигадує: невідомий режим лишиться невідомим і не пройде validate()."""
+    if not isinstance(d, dict):
+        raise ValueError("відповідь не є JSON-об'єктом")
+    d = dict(d)
+    r = str(d.get("news_regime", "")).strip().upper().replace("–", "-")
+    d["news_regime"] = _REGIME_ALIASES.get(r, r)
+
+    def num(x):
+        try:
+            v = float(str(x).replace("%", "").replace(",", ".").strip())
+        except (TypeError, ValueError):
+            return x
+        return v / 100 if 1 < v <= 100 else v
+    d["confidence"] = num(d.get("confidence", -1))
+    for k in ("facts", "anomalies"):
+        v = d.get(k, [])
+        if v is None:
+            v = []
+        if isinstance(v, str):
+            v = [v] if v.strip() else []
+        d[k] = [str(x) if not isinstance(x, str) else x for x in v] if isinstance(v, list) else v
+    ev = d.get("events_ahead", [])
+    if isinstance(ev, dict):
+        ev = [ev]
+    if isinstance(ev, list):
+        ev = [x if isinstance(x, dict) else {"what": str(x)} for x in ev]
+    d["events_ahead"] = ev or []
+    for k in ("impact_on_strategy", "positions_review"):
+        if d.get(k) is not None and not isinstance(d[k], str):
+            d[k] = json.dumps(d[k], ensure_ascii=False)
+    tp = d.get("trade_proposal")
+    if isinstance(tp, dict):
+        tp = dict(tp)
+        if "action" in tp:
+            tp["action"] = str(tp["action"]).strip().upper()
+        if "confidence" in tp:
+            tp["confidence"] = num(tp["confidence"])
+        d["trade_proposal"] = tp
+    return d
+
+
 def validate(d: dict) -> dict:
     if d.get("news_regime") not in REGIMES:
         raise ValueError(f"news_regime поза {REGIMES}: {d.get('news_regime')!r}")
@@ -191,6 +238,12 @@ class ShadowAnalyst:
     prices: deque = field(default_factory=lambda: deque(maxlen=2000))
     # рукав «ШІ-трейдер» (7.6)
     workspace_id: str = ""              # для ключа рівня «Організація» (anthropic-workspace-id)
+    fallback_models: tuple = ("claude-sonnet-5-5", "claude-haiku-5-5")
+    retry_delays: tuple = (5, 20, 60)   # с між повторами при тимчасових збоях API
+    sleep: object = None                # для тестів
+    ok_at: int = 0                      # стан для панелі
+    fail_count: int = 0
+    last_error: str = ""
     trade: bool = False                 # пропонувати угоди (лише якщо в портфелі є рукав ai)
     min_confidence: float = 0.6
     signal_ttl_min: int = 30
@@ -241,9 +294,11 @@ class ShadowAnalyst:
         try:
             self.last = self.assess(now_ms, market, book=book, reason=reason)
         except Exception as e:  # noqa: BLE001 — без аналітика агент працює як завжди
-            self.journal.event("WARN", "ai_news", f"ШІ-аналітик недоступний: {type(e).__name__}: {str(e)[:200]}"
-                               f" · повтор через 30 хв")
-            self.next_run = min(self.next_run, now_ms + 30 * 60_000)    # не чекати 12 год після збою
+            self.fail_count += 1
+            self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
+            wait_min = min(240, 15 * 2 ** (self.fail_count - 1))         # 15, 30, 60, 120, 240 хв
+            self.journal.event("WARN", "ai_news", f"ШІ-аналітик недоступний: {self.last_error} · повтор через {wait_min} хв")
+            self.next_run = min(self.next_run, now_ms + wait_min * 60_000)
         finally:
             self.running = False
 
@@ -256,12 +311,22 @@ class ShadowAnalyst:
         if self.workspace_id:
             base = complete
             complete = lambda k, m, sy, u: base(k, m, sy, u, workspace_id=self.workspace_id)  # noqa: E731
-        raw = complete(self.api_key, self.model, SYSTEM + (TRADER if trading else ""), packet)
+        system = SYSTEM + (TRADER if trading else "")
+        raw = self._call(complete, system, packet)
         try:
-            rep = validate(claude.extract_json(raw))
-        except (ValueError, json.JSONDecodeError) as e:
-            self.journal.event("WARN", "ai_news", f"ШІ: відповідь не пройшла схему ({e})", raw=raw[:2000])
-            raise
+            rep = validate(normalize(claude.extract_json(raw)))
+        except (ValueError, json.JSONDecodeError, TypeError) as e:
+            # одна спроба виправлення: та сама задача + жорстка вимога формату
+            self.journal.event("INFO", "ai_news", f"ШІ: відповідь не за схемою ({e}) — повторюю з вимогою формату",
+                               raw=raw[:1500])
+            raw = self._call(complete, system, packet + f"\n\nПОПЕРЕДНЯ ВІДПОВІДЬ НЕ ПРОЙШЛА ПЕРЕВІРКУ ({e}). "
+                             "Поверни ЛИШЕ один валідний JSON-об'єкт за схемою, стисло, без тексту навколо.")
+            try:
+                rep = validate(normalize(claude.extract_json(raw)))
+            except (ValueError, json.JSONDecodeError, TypeError) as e2:
+                self.journal.event("WARN", "ai_news", f"ШІ: відповідь не пройшла схему ({e2})", raw=raw[:2000])
+                raise
+        self.ok_at, self.fail_count, self.last_error = now_ms, 0, ""
         regime = rep["news_regime"]
         prev = self.active_regime(now_ms)
         if self.mode == "auto":
@@ -288,6 +353,35 @@ class ShadowAnalyst:
         return rec
 
 
+def _call_impl(self, complete, system: str, user: str) -> str:
+    """Виклик моделі з повторами при тимчасових збоях (429/5xx/529/мережа/обрізання) і запасною моделлю,
+    якщо основна недоступна (404). Помилки ключа/доступу (400/401/403) — одразу, без повторів."""
+    import time as _t
+    sleep = self.sleep or _t.sleep
+    models = [self.model] + [m for m in self.fallback_models if m != self.model]
+    last: Exception | None = None
+    for mi, model in enumerate(models):
+        for attempt in range(len(self.retry_delays) + 1):
+            try:
+                out = complete(self.api_key, model, system, user)
+                if mi:
+                    self.journal.event("WARN", "ai_news", f"ШІ: основна модель {self.model} недоступна, відповіла {model}")
+                return out
+            except claude.ClaudeError as e:
+                last = e
+                if e.code == 404:                     # модель не знайдено → наступна модель
+                    break
+                if not e.retryable or attempt >= len(self.retry_delays):
+                    raise
+                sleep(self.retry_delays[attempt])
+        else:
+            continue
+    raise last or claude.ClaudeError("немає доступних моделей", 0, False)
+
+
+ShadowAnalyst._call = _call_impl
+
+
 def _vet_trade_impl(self, now_ms: int, market: dict, rep: dict, packet: str, complete) -> dict:
     """Ідея ШІ → код → критик → сигнал рукаву. Кожен крок у журнал (kind = ai_trade)."""
     prop = dict(rep["trade_proposal"])
@@ -307,7 +401,7 @@ def _vet_trade_impl(self, now_ms: int, market: dict, rep: dict, packet: str, com
     why = self.precheck(sig) if self.precheck else "немає перевірки коду"
     if why:
         return reject("код", why)
-    verdict_raw = complete(self.api_key, self.model, CRITIC,
+    verdict_raw = self._call(complete, CRITIC,
                            packet + "\nПРОПОЗИЦІЯ АНАЛІТИКА:\n" + json.dumps(prop, ensure_ascii=False)
                            + f"\nОЦІНКА АНАЛІТИКА: {rep['news_regime']}; факти: {json.dumps(rep['facts'], ensure_ascii=False)}")
     try:

@@ -301,7 +301,7 @@ const T = {
   done:"Готово",preset_hint:"За бектестом 7 років: річна {c} %, макс. просадка {d} %",preset_ai:"включає рукав D (ШІ-трейдер, 10 %) — без бектесту",
   warn_above:"Вище {v} — більший ризик (Біблія: рішення Командира)",errs:"Помилки",lite:"Проста версія сторінки",
   binance_key:"Binance API key (testnet)",binance_live_key:"Binance API key — LIVE (реальні гроші)",binance_live_secret:"Binance API secret — LIVE",confirm_live:"Підтвердження live: впиши LIVE",confirm_live_h:"Агент торгуватиме РЕАЛЬНИМИ грошима в межах «Live: межа капіталу».",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",anthropic_ws:"Anthropic workspace ID (лише для ключа рівня «Організація», wrkspc_…)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
-  updated:"оновлено",press_save:"натисни «Зберегти» внизу",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
+  updated:"оновлено",ai_err:"ШІ тимчасово не відповідає",press_save:"натисни «Зберегти» внизу",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
   last_tick:"останній крок",next_ai:"ШІ через",ai_running:"ШІ аналізує…",armed:"зведено",pending:"ордер",watching:"стежить за ціною",bots_armed:"ботів зведено",positions_open:"позицій",regime_zone_up:"вище EMA200",regime_zone_down:"нижче EMA200"},
  en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_ai_s:"Outlook",tab_tr:"Trades",tab_st:"Settings",
   price_chart:"ETH/USDT price",next_events:"Upcoming events",equity_chart:"Portfolio equity vs ETH",indexed:"index, start = 100",
@@ -334,7 +334,7 @@ const T = {
   done:"Done",preset_hint:"7-year backtest: {c} % a year, max drawdown {d} %",preset_ai:"includes sleeve D (AI trader, 10 %) — no backtest",
   warn_above:"Above {v} means more risk (Bible: Commander's decision)",errs:"Errors",lite:"Simple page",
   binance_key:"Binance API key (testnet)",binance_live_key:"Binance API key — LIVE (реальні гроші)",binance_live_secret:"Binance API secret — LIVE",confirm_live:"Підтвердження live: впиши LIVE",confirm_live_h:"Агент торгуватиме РЕАЛЬНИМИ грошима в межах «Live: межа капіталу».",binance_secret:"Binance API secret (testnet)",binance_live_key:"Binance API key — LIVE (real money)",binance_live_secret:"Binance API secret — LIVE",confirm_live:"Live confirmation: type LIVE",confirm_live_h:"The agent will trade REAL money within the “Live: capital cap”.",anthropic_key:"Anthropic API key (AI)",anthropic_ws:"Anthropic workspace ID (only for an Organization-scope key, wrkspc_…)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
-  updated:"updated",press_save:"press “Save” below",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
+  updated:"updated",ai_err:"AI temporarily unavailable",press_save:"press “Save” below",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
   last_tick:"last step",next_ai:"AI in",ai_running:"AI is analysing…",armed:"armed",pending:"order",watching:"watching price",bots_armed:"bots armed",positions_open:"positions",regime_zone_up:"above EMA200",regime_zone_down:"below EMA200"}
 };
 const SLEEVE_NAMES = {
@@ -457,8 +457,10 @@ function renderOverview(){const o=S.ov;if(!o)return;
   k.append(kpi(t("k_event"),nx?nx.kind.toUpperCase():"—",nx?`${fmtTime(nx.ts)} · ${rel(nx.ts)}`:"—"));
   renderAiMini();renderCal("#calMini",6);renderSleeves()}
 
-function renderAiMini(){const box=$("#aiMini");box.textContent="";const o=S.ov,ai=o&&o.ai;
+function renderAiMini(){const box=$("#aiMini");box.textContent="";const o=S.ov,ai=o&&o.ai,an=o&&o.analyst;
   box.append(el("h2",{},t("k_ai"),el("span",{class:"r"},ai?fmtTime(ai.ts):"")));
+  if(an&&an.fail_count)box.append(el("div",{class:"alert",style:"margin-bottom:8px"},el("b",{},"⚠"),
+    `${t("ai_err")} (${an.fail_count}×): ${an.last_error} · ${t("next_run")} ${rel(an.next_run)}`));
   if(!ai){box.append(el("div",{class:"empty"},t("no_ai")));return}
   box.append(el("div",{style:"display:flex;align-items:center;gap:10px;margin-bottom:8px"},regimePill(ai.news_regime),
     el("div",{style:"flex:1"},el("div",{class:"meter"},el("i",{style:`width:${Math.round((ai.confidence||0)*100)}%`}))),

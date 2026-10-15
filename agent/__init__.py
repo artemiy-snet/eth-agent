@@ -1,3 +1,3 @@
 """ETH-Агент."""
 
-__version__ = "0.9.2-beta"
+__version__ = "0.9.3-beta"

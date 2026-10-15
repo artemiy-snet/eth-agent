@@ -10,7 +10,14 @@ API = "https://api.anthropic.com/v1/messages"
 
 
 class ClaudeError(Exception):
-    pass
+    """code: HTTP-код (0 — мережа/обрізана відповідь). retryable — чи є сенс повторити."""
+
+    def __init__(self, msg: str, code: int = 0, retryable: bool = True):
+        super().__init__(msg)
+        self.code, self.retryable = code, retryable
+
+
+RETRYABLE_HTTP = {408, 409, 429, 500, 502, 503, 504, 529}
 
 
 def headers(api_key: str, workspace_id: str = "") -> dict:
@@ -40,7 +47,7 @@ def explain_http(code: int, body: str) -> str:
 
 
 def complete(api_key: str, model: str, system: str, user: str, max_tokens: int = 4096,
-             timeout: float = 90, workspace_id: str = "") -> str:
+             timeout: float = 120, workspace_id: str = "") -> str:
     body = json.dumps({"model": model, "max_tokens": max_tokens, "system": system,
                        "messages": [{"role": "user", "content": user}]}).encode()
     req = urllib.request.Request(API, data=body, method="POST", headers=headers(api_key, workspace_id))
@@ -48,12 +55,13 @@ def complete(api_key: str, model: str, system: str, user: str, max_tokens: int =
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
-        raise ClaudeError(explain_http(e.code, e.read().decode(errors="replace"))) from None
-    except (urllib.error.URLError, TimeoutError) as e:
-        raise ClaudeError(f"мережа: {e}") from None
+        raise ClaudeError(explain_http(e.code, e.read().decode(errors="replace")), e.code,
+                          e.code in RETRYABLE_HTTP) from None
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+        raise ClaudeError(f"мережа: {e}", 0, True) from None
     text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     if data.get("stop_reason") == "max_tokens":
-        raise ClaudeError(f"відповідь обрізана лімітом {max_tokens} токенів")
+        raise ClaudeError(f"відповідь обрізана лімітом {max_tokens} токенів", 0, True)
     return text
 
 

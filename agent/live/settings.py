@@ -71,6 +71,8 @@ class LiveSettings:
     status_port: int = 8765
     sleeves: tuple = ()          # порожньо — одна стратегія v3 з секції v3
     capital_usdt: Decimal = D("500")
+    live_confirmed: bool = False                # live.confirmed — підтвердження Командира з панелі
+    live_max_capital: Decimal = D("20")         # жорстка межа капіталу агента в live
     analyst: dict = field(default_factory=dict)   # секція analyst (ШІ-аналітик новин, тіньовий режим)
 
 
@@ -180,10 +182,28 @@ def live_mode(cli: str | None, cfg: str | None) -> str:
     return cfg if cfg in ("paper", "testnet", "live") else "paper"
 
 
+def apply_live_cap(raw: dict, mode: str) -> dict:
+    """У live агент бачить лише live.max_capital_usdt (за замовчуванням 20 $). Склад — live.preset, якщо задано,
+    інакше той самий портфель, що в paper/testnet (повна версія)."""
+    if mode != "live":
+        return raw
+    import copy
+    raw = copy.deepcopy(raw)
+    live = raw.get("live") or {}
+    cap = D(str(live.get("max_capital_usdt", 20)))
+    pf = raw.setdefault("portfolio", {})
+    pf["capital_usdt"] = str(min(D(str(pf.get("capital_usdt", cap))), cap))
+    if live.get("preset") and live["preset"] != "як_у_портфелі":
+        pf.pop("sleeves", None)
+        pf["preset"] = live["preset"]
+    return raw
+
+
 def load(path: Path, mode: str | None = None, home: Path | None = None) -> LiveSettings:
     raw = load_raw(path, home)
     agent = raw.get("agent", {})
     live = raw.get("live", {})
+    raw = apply_live_cap(raw, live_mode(mode, agent.get("mode")))
     return LiveSettings(
         pair=agent.get("pair", "ETHUSDT"),
         mode=live_mode(mode, agent.get("mode")),
@@ -198,4 +218,6 @@ def load(path: Path, mode: str | None = None, home: Path | None = None) -> LiveS
         sleeves=build_sleeves(raw)[0],
         capital_usdt=build_sleeves(raw)[1],
         analyst=dict(raw.get("analyst") or {}),
+        live_confirmed=bool(live.get("confirmed", False)),
+        live_max_capital=D(str(live.get("max_capital_usdt", 20))),
     )

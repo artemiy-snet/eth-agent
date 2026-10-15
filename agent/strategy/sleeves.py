@@ -35,6 +35,13 @@ SLEEVES["C_ев_все"] = {**SLEEVES["C"], "label": "Режимне утрим�
 SLEEVES["D"] = {"strategy": "ai", "label": "ШІ-трейдер (за умовами стратегій A/B/C, з перевіркою)",
                 "set": ["risk.max_dd_pct=15", "risk.daily_loss_pct=5", "risk.max_open_risk_pct=100",
                         "risk.max_eth_share_pct=100"]}
+# Live-міні (рішення Командира 2026-10-15: реальний тест на 20 $). Мінімальний ордер Binance — 5 $, тому
+# 1 бот на рукав, а ризик до стопу 5 % капіталу рукава (≈ 0,5 $ на угоду при 10 $), інакше розмір < 5 $ і угод не буде.
+SLEEVES["Bm"] = {"strategy": "v3", "label": "Відскок (міні, 1 бот)",
+                 "set": ["v3.bots=1", "v3.filters.atr_max_pct=15", "v3.max_hold_h=168", "v3.risk_per_trade_pct=5",
+                         "risk.max_open_risk_pct=100", "risk.max_eth_share_pct=100", "risk.daily_loss_pct=10",
+                         "risk.max_dd_pct=25"]}
+SLEEVES["Cm"] = {**SLEEVES["C"], "label": "Режимне утримання (міні)"}
 BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai"}
 
 PRESETS: dict[str, dict[str, float]] = {
@@ -45,6 +52,7 @@ PRESETS: dict[str, dict[str, float]] = {
     "лише_режим": {"C": 1.0},
     "збалансований+ші": {"B1": 0.6, "C": 0.3, "D": 0.1},
     "агресивний+ші": {"B1": 0.4, "C": 0.5, "D": 0.1},
+    "live_міні": {"Bm": 0.5, "Cm": 0.5},
     # макроподії — для порівняння з базовими
     "поточний_ев": {"A_ев": 1.0},
     "обережний_ев": {"B_ев": 1.0},
@@ -58,7 +66,7 @@ PRESETS: dict[str, dict[str, float]] = {
 
 BASE_PRESETS = ["поточний", "обережний", "збалансований", "агресивний", "лише_режим"]
 _BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE]
-GROUPS = {"all": _BT, "base": BASE_PRESETS, "macro": _BT}
+GROUPS = {"all": [k for k in _BT if k != "live_міні"], "base": BASE_PRESETS, "macro": [k for k in _BT if k != "live_міні"]}
 
 
 def apply_overrides(raw: dict, overrides: list[str]) -> dict:

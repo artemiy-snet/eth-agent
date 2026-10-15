@@ -19,7 +19,7 @@ import yaml
 from agent.features import calendar
 from agent.strategy.sleeves import BASE_PRESETS, PRESETS, SLEEVES
 
-SECRET_KEYS = ["BINANCE_API_KEY", "BINANCE_API_SECRET", "ANTHROPIC_API_KEY", "ANTHROPIC_WORKSPACE_ID", "TELEGRAM_TOKEN",
+SECRET_KEYS = ["BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "ANTHROPIC_API_KEY", "ANTHROPIC_WORKSPACE_ID", "TELEGRAM_TOKEN",
                "TELEGRAM_CHAT_ID"]
 LIVE_PRESETS = BASE_PRESETS + [k for k in PRESETS if "+ші" in k]
 
@@ -34,9 +34,16 @@ def _f(key, typ, sec, lo=None, hi=None, opts=None, step=None, uk="", en="", help
 
 
 SCHEMA = [
-    _f("agent.mode", "select", "general", opts=["paper", "testnet"], uk="Режим", en="Mode",
-       help_uk="paper — справжні ціни, віртуальні угоди; testnet — справжні ордери на тестових грошах. Live з панелі вимкнено.",
-       help_en="paper — real prices, virtual trades; testnet — real orders with test money. Live is disabled here."),
+    _f("agent.mode", "select", "general", opts=["paper", "testnet", "live"], uk="Режим", en="Mode",
+       help_uk="paper — справжні ціни, віртуальні угоди; testnet — тестові гроші; live — РЕАЛЬНІ гроші (потрібне підтвердження і live-ключі).",
+       help_en="paper — real prices, virtual trades; testnet — test money; live — REAL money (needs confirmation and live keys)."),
+    _f("live.max_capital_usdt", "number", "general", 5, 1000, step=1, uk="Live: межа капіталу агента, USDT",
+       en="Live: agent capital cap, USDT", warn_above=20,
+       help_uk="Агент у live торгує лише цією сумою, решту рахунку не чіпає.",
+       help_en="In live the agent trades only this amount and never touches the rest of the account."),
+    _f("live.preset", "select", "general", opts=["як_у_портфелі", "live_міні"] + LIVE_PRESETS, uk="Live: склад",
+       en="Live: mix", help_uk="як_у_портфелі — повна версія; live_міні — під малий капітал (мін. ордер 5 $).",
+       help_en="as portfolio — full version; live_міні — for small capital (min order $5)."),
     _f("portfolio.capital_usdt", "number", "portfolio", 10, 1_000_000, step=1, uk="Капітал, USDT", en="Capital, USDT"),
     _f("portfolio.preset", "select", "portfolio", opts=LIVE_PRESETS, uk="Портфель", en="Portfolio",
        help_uk="Склад стратегій. Більший дохід = більша просадка (див. підказку).",
@@ -173,6 +180,12 @@ def save_settings(home: Path, body: dict) -> dict:
     secrets = {k: str(v).strip() for k, v in (body.get("secrets") or {}).items() if k in SECRET_KEYS and str(v).strip()}
     bad = [k for k, v in secrets.items() if any(c in v for c in "\n\r= ")]
     errors += [f"{k}: недопустимі символи" for k in bad]
+    if clean.get("agent.mode") == "live":
+        if (body.get("confirm_live") or "").strip().upper() != "LIVE":
+            errors.append("live: впиши LIVE у поле підтвердження — агент торгуватиме РЕАЛЬНИМИ грошима")
+        sec = read_secrets_file(home) | secrets
+        if not (sec.get("BINANCE_LIVE_API_KEY") and sec.get("BINANCE_LIVE_API_SECRET")):
+            errors.append("live: спершу додай Binance LIVE API key і secret")
     if clean.get("agent.mode") == "testnet":
         sec = read_secrets_file(home) | secrets
         if not (sec.get("BINANCE_API_KEY") and sec.get("BINANCE_API_SECRET")):
@@ -183,6 +196,8 @@ def save_settings(home: Path, body: dict) -> dict:
     ov = (yaml.safe_load(ov_path.read_text(encoding="utf-8")) or {}) if ov_path.exists() else {}
     for k, v in clean.items():
         _set(ov, k, v)
+    if "agent.mode" in clean:
+        _set(ov, "live.confirmed", clean["agent.mode"] == "live")
     tmp = ov_path.with_suffix(".tmp")
     tmp.write_text("# Зміни з панелі. Діють поверх конфігу після перезапуску.\n"
                    + yaml.safe_dump(ov, allow_unicode=True, sort_keys=True), encoding="utf-8")
@@ -212,6 +227,25 @@ def check(kind: str, home: Path, mode: str, given: dict | None = None) -> dict:
             return {"ok": True, "msg": f"testnet: USDT {bal.get('USDT', '0')}, ETH {bal.get('ETH', '0')}, "
                                        f"торгівля {'так' if acc.get('canTrade') else 'ні'}"
                                        + (" · ⚠ ключ має право виведення!" if warn else "")}
+        if kind == "binance_live":
+            from agent.live.binance import BASES, Client
+            k, sct = sec.get("BINANCE_LIVE_API_KEY"), sec.get("BINANCE_LIVE_API_SECRET")
+            if not (k and sct):
+                return {"ok": False, "msg": "live-ключі не задано"}
+            c = Client(BASES["live"], k, sct)
+            c.sync_time()
+            acc = c.account()
+            bal = {b["asset"]: b["free"] for b in acc.get("balances", []) if b["asset"] in ("USDT", "ETH")}
+            extra = ""
+            try:
+                r = c._request("GET", "/sapi/v1/account/apiRestrictions", signed=True)
+                extra = (f" · IP-обмеження: {'так' if r.get('ipRestrict') else 'НІ'}"
+                         f" · виведення: {'УВІМКНЕНО ⚠' if r.get('enableWithdrawals') else 'вимкнено'}")
+            except Exception:  # noqa: BLE001
+                extra = " · виведення: " + ("УВІМКНЕНО ⚠" if acc.get("canWithdraw") else "вимкнено")
+            return {"ok": bool(acc.get("canTrade")),
+                    "msg": f"LIVE: USDT {bal.get('USDT', '0')}, ETH {bal.get('ETH', '0')}, "
+                           f"торгівля {'так' if acc.get('canTrade') else 'НІ'}{extra}"}
         if kind == "anthropic":
             import urllib.error
             import urllib.request

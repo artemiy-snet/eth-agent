@@ -420,3 +420,43 @@ def test_check_uses_unsaved_field_value(tmp_path, monkeypatch):
     assert panel_api.check("anthropic", tmp_path, "paper")["ok"] is False          # нічого не збережено
     r = panel_api.check("anthropic", tmp_path, "paper", {"ANTHROPIC_API_KEY": "field-value-1234"})
     assert r["ok"] and seen["key"] == "field-value-1234"
+
+
+def test_live_requires_confirmation_keys_and_cap(tmp_path):
+    from pathlib import Path
+
+    import pytest as _pt
+
+    from agent.live import panel_api
+    from agent.live.settings import load
+
+    # без підтвердження — заблоковано
+    (tmp_path / "overrides.yaml").write_text("agent: {mode: live}\n")
+    s = load(Path("config.portfolio.yaml"), home=tmp_path)
+    with _pt.raises(runner.LiveDisabled):
+        runner.build(s, tmp_path)
+    # панель: live без слова LIVE і без ключів — відмова
+    r = panel_api.save_settings(tmp_path, {"values": {"agent.mode": "live"}})
+    assert not r["ok"] and any("LIVE" in e for e in r["errors"]) and any("LIVE API" in e for e in r["errors"])
+    r = panel_api.save_settings(tmp_path, {"values": {"agent.mode": "live", "live.max_capital_usdt": 20},
+                                           "secrets": {"BINANCE_LIVE_API_KEY": "kkkk1234", "BINANCE_LIVE_API_SECRET": "ssss5678"},
+                                           "confirm_live": "live"})
+    assert r["ok"]
+    s = load(Path("config.portfolio.yaml"), home=tmp_path)
+    assert s.mode == "live" and s.live_confirmed
+    total = sum(x.params.budget_usdt * x.params.bots for x in s.sleeves)
+    assert total == D(20) and [x.name for x in s.sleeves] == ["B1", "C", "D"]          # повна версія, межа 20 $
+    warn = runner.sleeve_feasibility(s)
+    assert any("B1" in w for w in warn) and any("D" in w for w in warn) and not any("C:" in w for w in warn)
+    # повернення в paper знімає підтвердження
+    panel_api.save_settings(tmp_path, {"values": {"agent.mode": "paper"}})
+    assert not load(Path("config.portfolio.yaml"), home=tmp_path).live_confirmed
+
+
+def test_live_mini_preset_can_trade_with_20(tmp_path):
+    from pathlib import Path
+
+    from agent.live.settings import load
+    (tmp_path / "overrides.yaml").write_text("agent: {mode: live}\nlive: {confirmed: true, max_capital_usdt: 20, preset: live_міні}\n")
+    s = load(Path("config.portfolio.yaml"), home=tmp_path)
+    assert [x.name for x in s.sleeves] == ["Bm", "Cm"] and runner.sleeve_feasibility(s) == []

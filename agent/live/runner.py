@@ -55,8 +55,8 @@ class Agent:
     def __init__(self, s: LiveSettings, client: Client, broker, home: Path, journal: Journal,
                  notifier: Notifier, filters: SymbolFilters, strategy=v3, params=None, risk=None,
                  features=None, name: str = ""):
-        if s.mode not in ("paper", "testnet"):
-            raise LiveDisabled("Режим live вимкнено: спершу testnet і paper (Біблія, розділ 9).")
+        if s.mode not in ("paper", "testnet") and not (s.mode == "live" and s.live_confirmed):
+            raise LiveDisabled("Режим live не підтверджено: панель → Налаштування → Режим live + підтвердження.")
         self.s, self.c, self.broker, self.home, self.j, self.n, self.f = s, client, broker, home, journal, notifier, filters
         self.strat, self.name = strategy, name
         self.fp = features or s.features
@@ -593,7 +593,7 @@ def read_secrets(home: Path) -> dict[str, str]:
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
-    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
+    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
               "ANTHROPIC_WORKSPACE_ID"):
         if os.environ.get(k):
             out[k] = os.environ[k]
@@ -603,11 +603,19 @@ def read_secrets(home: Path) -> dict[str, str]:
 def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     home.mkdir(parents=True, exist_ok=True)
     sec = read_secrets(home)
-    if settings.mode not in ("paper", "testnet"):
-        raise LiveDisabled("Режим live вимкнено: спершу testnet і paper (Біблія, розділ 9).")
-    if settings.mode == "testnet" and not (sec.get("BINANCE_API_KEY") and sec.get("BINANCE_API_SECRET")):
-        raise SystemExit(f"Для testnet потрібні BINANCE_API_KEY і BINANCE_API_SECRET у {home / 'secrets.env'}")
-    client = Client(BASES[settings.mode], sec.get("BINANCE_API_KEY", ""), sec.get("BINANCE_API_SECRET", ""))
+    live = settings.mode == "live"
+    if live and not settings.live_confirmed:
+        raise LiveDisabled("Режим live не підтверджено: панель → Налаштування → Режим live + підтвердження.")
+    if settings.mode not in ("paper", "testnet", "live"):
+        raise LiveDisabled(f"Невідомий режим {settings.mode}")
+    kk, ks = ("BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET") if live else ("BINANCE_API_KEY", "BINANCE_API_SECRET")
+    if settings.mode != "paper" and not (sec.get(kk) and sec.get(ks)):
+        raise SystemExit(f"Для {settings.mode} потрібні {kk} і {ks} (панель → Налаштування → ключі)")
+    if live:
+        total = sum((sl.params.budget_usdt * sl.params.bots for sl in settings.sleeves), ZERO)
+        if not settings.sleeves or total > settings.live_max_capital + D("0.01"):
+            raise LiveDisabled(f"Live: бюджет рукавів {total} перевищує межу {settings.live_max_capital} $")
+    client = Client(BASES[settings.mode], sec.get(kk, ""), sec.get(ks, ""))
     client.sync_time()
     try:
         filters = SymbolFilters.from_exchange_info(client.exchange_info(settings.pair), settings.pair)
@@ -630,4 +638,49 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
                         features=sl.features, name=sl.name) for sl in settings.sleeves]
         obj = Portfolio(agents)
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
+    if live:
+        live_preflight(client, settings, journal, notifier)
     return obj
+
+
+def live_preflight(client, settings, journal, notifier) -> None:
+    """Перед live: права ключа і баланс. Право виведення — попередження (рішення Командира), не блок."""
+    acc = client.account()
+    if not acc.get("canTrade"):
+        raise LiveDisabled("Live: ключ без права спотової торгівлі")
+    usdt = next((D(b["free"]) for b in acc.get("balances", []) if b["asset"] == "USDT"), ZERO)
+    total = sum((sl.params.budget_usdt * sl.params.bots for sl in settings.sleeves), ZERO)
+    msg = (f"LIVE: межа капіталу агента {total:.2f} $ (з {settings.live_max_capital} $), на рахунку вільних USDT {usdt:.2f}. "
+           f"Агент торгує лише своїм бюджетом, решту рахунку не чіпає.")
+    journal.event("WARN", "live", msg)
+    notifier.send("🔴 " + msg)
+    if acc.get("canWithdraw"):
+        w = "LIVE: ключ має право ВИВЕДЕННЯ коштів. Агент його не використовує; захист — IP-обмеження ключа."
+        journal.event("WARN", "live", w)
+        notifier.send("⚠️ " + w)
+    if usdt < total:
+        journal.event("WARN", "live", f"LIVE: вільних USDT ({usdt:.2f}) менше за бюджет ({total:.2f}) — частина входів не пройде")
+    for line in sleeve_feasibility(settings):
+        journal.event("WARN", "live", line)
+        notifier.send("⚠️ " + line)
+
+
+def sleeve_feasibility(settings) -> list[str]:
+    """Чи зможе рукав відкрити хоч одну угоду при мінімальному ордері біржі (5 $) і своєму розмірі за ризиком."""
+    out = []
+    mn = D("5.5")      # 5 $ minNotional + запас на комісію й округлення
+    for sl in settings.sleeves:
+        p = sl.params
+        per_bot = p.budget_usdt
+        if per_bot < mn:
+            out.append(f"Рукав {sl.name}: {per_bot:.2f} $ на бота < 5 $ (мінімальний ордер Binance) — угод не буде")
+            continue
+        if sl.strategy == "trend" and getattr(p, "alloc_pct", None) is not None:
+            continue
+        stop_pct = D("7") if sl.strategy != "ai" else D("5")       # типовий стоп 2 ATR(1d) / ШІ
+        by_risk = per_bot * p.bots * p.risk_per_trade_pct / stop_pct
+        if by_risk < mn:
+            need = mn * stop_pct / p.risk_per_trade_pct
+            out.append(f"Рукав {sl.name}: розмір за ризиком {p.risk_per_trade_pct} % ≈ {by_risk:.2f} $ < 5 $ — угод не буде "
+                       f"(потрібно ≈ {need:.0f} $ у рукаві)")
+    return out

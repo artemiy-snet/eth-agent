@@ -72,7 +72,7 @@ def step(state: V3State, tick: Tick, f: Features, p: TrendParams) -> tuple[V3Sta
             if why:
                 blocked.append((b.bot_id, why))
                 continue
-            stop = px - p.k_stop_atr * f.atr
+            stop = px - p.k_stop_atr * f.atr if p.k_stop_atr > 0 else D(0)   # 0 — без ATR-стопу (вихід лише за режимом)
             if p.alloc_pct is not None:
                 qty = floor_to_step(min(capital * p.alloc_pct / 100, b.usdt) / (px * (1 + p.fee_pct / 100)),
                                     p.qty_step)
@@ -87,10 +87,10 @@ def step(state: V3State, tick: Tick, f: Features, p: TrendParams) -> tuple[V3Sta
         elif b.phase is Phase.LONG:
             b.sell_max = max(b.sell_max, px)
             atr = f.atr or b.atr_entry
-            if atr:
+            if atr and p.k_trail_atr > 0:
                 b.stop_px = max(b.stop_px, b.sell_max - p.k_trail_atr * atr)
             reason = None
-            if px <= b.stop_px:
+            if b.stop_px > 0 and px <= b.stop_px:
                 reason = "trail"
             elif p.regime_exit and f.ema_dist_pct is not None and f.ema_dist_pct < 0:
                 reason = "regime"

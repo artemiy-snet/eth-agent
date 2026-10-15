@@ -52,9 +52,12 @@ def test_regime_break_exits():
 
 
 def test_regime_hold_fixed_allocation_without_breakout():
-    p = trend.TrendParams(alloc_pct=D(60), breakout=False, k_stop_atr=D(1000), k_trail_atr=D(1000))
+    p = trend.TrendParams(alloc_pct=D(60), breakout=False, k_stop_atr=D(0), k_trail_atr=D(0))
     s, out = feed(trend.init_state(p), [900], p)                    # нижче максимуму, але режим вгору
     assert out and out[0].side is Side.BUY
     assert abs(out[0].qty * D(900) - D(300)) < D(1)                 # ≈ 60 % від 500
+    assert out[0].stop == D(0)
+    s, out2 = feed(s, [500], p)                                     # глибоке падіння — стопу немає
+    assert out2 == []
     s, out = feed(s, [950], p, f=F(dist=-0.5))
     assert out[-1].reason == "trend_regime"

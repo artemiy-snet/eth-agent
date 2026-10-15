@@ -84,10 +84,18 @@ def render(agent) -> str:
     try:
         r = json.loads((agent.home / "ai_news.json").read_text())
         cls = {"NORMAL": "ok", "CAUTION": "warn", "RISK_OFF": "bad"}.get(r.get("news_regime"), "mut")
-        ai = (f"ШІ (тінь, {time.strftime('%d.%m %H:%M', time.localtime(r['ts'] / 1000))}): "
+        auto = r.get("mode") == "auto"
+        active = auto and (r.get("applied_until") or 0) > time.time() * 1000
+        ai = (f"ШІ ({'діє' if auto else 'тінь'}, {time.strftime('%d.%m %H:%M', time.localtime(r['ts'] / 1000))}): "
               f"<span class='{cls}'>{e(r.get('news_regime', ''))}</span> ({float(r.get('confidence', 0)):.2f}) — "
-              f"{e('; '.join(r.get('facts', [])[:3]))}<div class='mut'>якби діяв: {e(r.get('would_do', ''))}. "
-              f"Зараз на торгівлю не впливає.</div>")
+              f"{e('; '.join(r.get('facts', [])[:3]))}<div class='mut'>"
+              + (f"Застосовано до {time.strftime('%d.%m %H:%M', time.localtime(r['applied_until'] / 1000))}: "
+                 f"{e(r.get('would_do', ''))}." if active else
+                 "Дія закінчилась — агент торгує за своїми правилами." if auto else
+                 f"Якби діяв: {e(r.get('would_do', ''))}. Зараз на торгівлю не впливає.")
+              + "</div>"
+              + (f"<div>Позиції: {e(r.get('positions_review', ''))}</div>" if r.get("positions_review") else "")
+              + "".join(f"<div class='warn'>⚠ {e(x)}</div>" for x in r.get("anomalies", [])[:3]))
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return PAGE.format(next_event=next_event, ai=ai,

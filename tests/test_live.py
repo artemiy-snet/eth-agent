@@ -281,3 +281,24 @@ def test_portfolio_two_sleeves_on_fake_exchange(tmp_path):
     assert (tmp_path / "state_testnet_B1.json").exists() and (tmp_path / "state_testnet_C.json").exists()
     html = render(pf)
     assert "B1 · Відскок" in html and "C · Режимне" in html
+
+
+def test_ai_risk_off_blocks_only_new_entries(tmp_path):
+    a, c = make(tmp_path)
+    a.ai_mult = D(0)
+    buy_path(a, c)
+    assert c.sent == [] and a.state.bots[0].phase is v3.Phase.FLAT
+
+
+def test_ai_caution_halves_entry_and_exits_untouched(tmp_path):
+    a, c = make(tmp_path)
+    a.ai_mult = D("0.5")
+    buy_path(a, c)
+    q = D(c.sent[0]["quoteOrderQty"])
+    a2, c2 = make(tmp_path / "full")
+    buy_path(a2, c2)
+    assert abs(q * 2 - D(c2.sent[0]["quoteOrderQty"])) <= D(1)
+    a.ai_mult = D(0)                                   # RISK_OFF не заважає стопу/продажу
+    open(tmp_path / "STOP_FLATTEN", "w").write("x")
+    step(a, c, 992)
+    assert c.sent[-1]["side"] == "SELL"

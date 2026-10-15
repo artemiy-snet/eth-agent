@@ -80,7 +80,8 @@ class Agent:
         self.next_stop_poll = 0
         self.balance_diff = ZERO
         self.last_status: dict = {}
-        self.analyst = None          # ШІ-аналітик новин (тіньовий), див. build()
+        self.analyst = None          # ШІ-аналітик, див. build()
+        self.ai_mult = D(1)          # множник розміру нових входів від ШІ (≤ 1; лише зменшує ризик)
 
     # --- дані ----------------------------------------------------------------------------
     def now(self) -> int:
@@ -284,6 +285,10 @@ class Agent:
             self.state, new, blocked = self.strat.step(self.state, Tick(now, px), self.m.feat, self.p)
             intents += new
             for it in intents:
+                if it.side is Side.BUY and self.ai_mult < 1:
+                    it = self.apply_ai(it, px)
+                    if it is None:
+                        continue
                 veto = self.risk.check(it, self.context(now, px))
                 if veto:
                     v3.on_reject(self.state, it.bot_id)
@@ -297,6 +302,18 @@ class Agent:
         self.extra["kill_reason"] = self.risk.kill_reason
         self.extra["peak_equity"] = self.risk.peak_equity
         save_state(self.state_path, self.state, self.extra)
+
+    def apply_ai(self, it: Intent, px: Decimal) -> Intent | None:
+        """Правило асиметрії: ШІ може лише зменшити або заборонити НОВИЙ вхід."""
+        from agent.money import floor_to_step
+        qty = floor_to_step(it.qty * self.ai_mult, self.f.step_size)
+        if qty <= 0 or qty * px < self.f.min_notional:
+            v3.on_reject(self.state, it.bot_id)
+            self.j.event("INFO", "veto", f"вхід бота {it.bot_id}{' (' + self.name + ')' if self.name else ''} "
+                                         f"заблоковано ШІ (множник {self.ai_mult})")
+            return None
+        self.j.event("INFO", "ai", f"вхід бота {it.bot_id} зменшено ШІ: {it.qty} → {qty} ETH")
+        return dataclasses.replace(it, qty=qty, quote_qty=None if it.quote_qty is None else it.quote_qty * self.ai_mult)
 
     def status(self, now: int, px: Decimal) -> dict:
         f = self.m.feat
@@ -326,9 +343,8 @@ class Agent:
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
+                ai_step(self, [self], self.now())
                 self.tick()
-                if self.analyst:
-                    self.analyst.maybe_run(self.now(), market_for_analyst([self.last_status]))
             except Exception as e:                       # noqa: BLE001 — нічого не ковтаємо мовчки
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
@@ -347,15 +363,53 @@ def market_for_analyst(statuses: list[dict]) -> dict:
                          "in_eth": any(b.get("phase") != "FLAT" for b in x.get("bots", []))} for x in statuses if x]}
 
 
+def book_for_analyst(agents: list, journal) -> dict:
+    """Позиції, стопи, результат і стан ризику — для «контролю ставок»."""
+    sleeves = []
+    for a in agents:
+        st = a.last_status or {}
+        sleeves.append({
+            "name": a.name or "v3", "equity": st.get("equity"), "start_equity": st.get("start_equity"),
+            "killed": st.get("killed"), "kill_reason": st.get("kill_reason"), "pause_reason": st.get("pause_reason"),
+            "entry_gate": st.get("entry_gate"),
+            "positions": [{"bot": b["id"], "phase": b["phase"], "eth": b["eth"], "usdt": b["usdt"], "entry": b["entry"],
+                           "stop": b["stop"]} for b in st.get("bots", []) if b.get("phase") != "FLAT"],
+            "flat_bots": sum(1 for b in st.get("bots", []) if b.get("phase") == "FLAT"),
+            "pending_orders": len(a.extra.get("pending", {}) or {}), "exchange_stops": len(a.extra.get("stops", {}) or {}),
+            "balance_diff_pct": str(getattr(a, "balance_diff", "0")),
+        })
+    trades = [{"bot": t[0], "entry_px": t[3], "exit_px": t[4], "pnl": t[6], "reason": t[7]}
+              for t in journal.recent_trades(10)]
+    warn = [m for _, lvl, _, m in journal.recent_events(40) if lvl in ("WARN", "ERROR")][:8]
+    return {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades, "recent_warnings": warn}
+
+
+def ai_step(owner, agents: list, now: int) -> None:
+    """Раз на цикл: передати множник ШІ рукавам і, за потреби, запустити оцінку."""
+    an = owner.analyst
+    if an is None:
+        return
+    mult = an.size_mult(now)
+    for a in agents:
+        a.ai_mult = mult
+    killed = any(a.risk.killed for a in agents)
+    force = "kill switch" if killed and not getattr(owner, "_ai_saw_kill", False) else ""
+    owner._ai_saw_kill = killed
+    an.maybe_run(now, market_for_analyst([a.last_status for a in agents]), book_for_analyst(agents, owner.j), force)
+
+
 def start_notes(j, analyst) -> None:
     from agent.features import calendar
     left = calendar.days_left(int(time.time() * 1000))
     if left < 45:
         j.event("WARN", "calendar", f"календар макроподій закінчується через {left:.0f} дн — онови agent/features/calendar.py")
     if analyst is None:
-        j.event("INFO", "ai_news", "ШІ-аналітик новин вимкнено (немає ANTHROPIC_API_KEY у secrets.env або analyst.news_shadow: false)")
+        j.event("INFO", "ai_news", "ШІ-аналітик вимкнено (немає ANTHROPIC_API_KEY у secrets.env або analyst.enabled: false)")
     else:
-        j.event("INFO", "ai_news", f"ШІ-аналітик новин: тіньовий режим, модель {analyst.model}, раз на {analyst.every_h:g} год")
+        how = ("автоматично гальмує нові входи (CAUTION ½, RISK_OFF 0), ордерів не створює" if analyst.mode == "auto"
+               else "тіньовий режим, лише журнал")
+        j.event("INFO", "ai_news", f"ШІ-аналітик: {how}; модель {analyst.model}, раз на {analyst.every_h:g} год "
+                                   f"+ позачергово при русі ≥ {analyst.trigger_move_pct:g} % за 4 год або kill switch")
 
 
 class Portfolio:
@@ -412,9 +466,8 @@ class Portfolio:
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
+                ai_step(self, self.agents, self.agents[0].now())
                 self.tick()
-                if self.analyst:
-                    self.analyst.maybe_run(self.agents[0].now(), market_for_analyst([a.last_status for a in self.agents]))
             except Exception as e:                       # noqa: BLE001
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
@@ -465,5 +518,5 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
                         strategy=trend if sl.strategy == "trend" else v3, params=sl.params, risk=sl.risk,
                         features=sl.features, name=sl.name) for sl in settings.sleeves]
         obj = Portfolio(agents)
-    obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home)
+    obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
     return obj

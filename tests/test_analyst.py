@@ -82,28 +82,72 @@ def test_assess_schema_failure_is_logged_not_fatal(tmp_path, monkeypatch):
 
 def test_from_settings_requires_key(tmp_path):
     assert shadow.from_settings({}, {}, J(), tmp_path) is None
-    assert shadow.from_settings({"news_shadow": False}, {"ANTHROPIC_API_KEY": "k"}, J(), tmp_path) is None
-    a = shadow.from_settings({"news_every_h": 2}, {"ANTHROPIC_API_KEY": "k"}, J(), tmp_path)
-    assert a.every_h == 2 and a.model
+    assert shadow.from_settings({"enabled": False}, {"ANTHROPIC_API_KEY": "k"}, J(), tmp_path) is None
+    a = shadow.from_settings({"every_h": 2, "mode": "auto"}, {"ANTHROPIC_API_KEY": "k"}, J(), tmp_path)
+    assert a.every_h == 2 and a.model and a.mode == "auto"
+    with pytest.raises(ValueError):
+        shadow.from_settings({"mode": "trade"}, {"ANTHROPIC_API_KEY": "k"}, J(), tmp_path)
 
 
-def test_maybe_run_throttles(tmp_path):
-    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=J(), home=tmp_path, every_h=4)
+def _sync_threads(monkeypatch):
+    class T:
+        def __init__(self, target, args, daemon):
+            self.t, self.a = target, args
+
+        def start(self):
+            self.t(*self.a)
+    monkeypatch.setattr(shadow.threading, "Thread", T)
+
+
+H = 3_600_000
+
+
+def test_maybe_run_schedule_and_triggers(tmp_path, monkeypatch):
+    _sync_threads(monkeypatch)
+    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=J(), home=tmp_path, every_h=12, min_gap_h=2)
     calls = []
-    a._run = lambda now, m: calls.append(now)
-    import threading
-    orig = threading.Thread
-    shadow.threading.Thread = lambda target, args, daemon: type("T", (), {"start": lambda s: target(*args)})()
-    try:
-        a.maybe_run(0, {"price": "1"})
+    def fake_run(now, m, b, r):
+        calls.append((now, r))
         a.running = False
-        a.maybe_run(3_600_000, {"price": "1"})
-        a.maybe_run(4 * 3_600_000, {"price": "1"})
-        a.running = False
-        a.maybe_run(5 * 3_600_000, {})            # без ціни — не запускаємо
-    finally:
-        shadow.threading.Thread = orig
-    assert calls == [0, 4 * 3_600_000]
+    a._run = fake_run
+    a.maybe_run(0, {"price": "1000"})                   # перший — за розкладом
+    a.maybe_run(1 * H, {"price": "1010"})               # рано, без тригера
+    a.maybe_run(1.5 * H, {"price": "1060"})             # +6 %, але min_gap 2 год
+    a.maybe_run(3 * H, {"price": "1061"})               # тригер руху (від 1000 за 4 год)
+    a.maybe_run(4 * H, {"price": "1000"}, force="kill switch")   # рано після попереднього
+    a.maybe_run(15 * H, {"price": "1000"})              # знову за розкладом (3 + 12)
+    a.maybe_run(16 * H, {})                             # без ціни — ні
+    assert [c[0] for c in calls] == [0, 3 * H, 15 * H]
+    assert "рух ціни" in calls[1][1] and calls[2][1] == ""
+
+
+def test_auto_mode_applies_only_reduction_and_expires(tmp_path, monkeypatch):
+    monkeypatch.setattr(news, "fetch", lambda feeds, since: ([], []))
+    j = J()
+    sent = []
+    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=j, home=tmp_path, mode="auto", max_action_h=24,
+                             notifier=type("N", (), {"send": lambda s, t: sent.append(t)})())
+    now = 1792922400000
+    rep = {**GOOD, "news_regime": "RISK_OFF", "valid_until": "2030-01-01T00:00:00Z", "anomalies": ["позиція без стопа"]}
+    a.assess(now, {"price": "4000"}, complete=lambda *x: json.dumps(rep))
+    assert a.size_mult(now + H) == 0 and a.active_regime(now + H) == "RISK_OFF"
+    assert a.size_mult(now + 25 * H) == 1                         # valid_until обрізано до 24 год
+    assert any(e[1] == "ai_review" for e in j.ev) and "RISK_OFF" in sent[0]
+    a.assess(now + 2 * H, {"price": "4000"}, complete=lambda *x: json.dumps({**GOOD, "valid_until": "bad"}))
+    assert a.size_mult(now + 3 * H) == shadow.Decimal("0.5")
+
+
+def test_shadow_mode_never_changes_size(tmp_path, monkeypatch):
+    monkeypatch.setattr(news, "fetch", lambda feeds, since: ([], []))
+    a = shadow.ShadowAnalyst(api_key="k", model="m", journal=J(), home=tmp_path, mode="shadow")
+    a.assess(0, {"price": "1"}, complete=lambda *x: json.dumps({**GOOD, "news_regime": "RISK_OFF"}))
+    assert a.size_mult(1) == 1
+
+
+def test_packet_includes_positions(tmp_path):
+    p = shadow.build_packet(0, {"price": "1"}, [], book={"sleeves": [{"name": "C", "positions": [{"stop": ""}]}]},
+                            reason="kill switch")
+    assert "ПОЗИЦІЇ ТА СТАН АГЕНТА" in p and '"name": "C"' in p and "kill switch" in p
 
 
 def test_review_compares_regimes():

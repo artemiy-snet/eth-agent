@@ -55,13 +55,20 @@ risk:                       # розділ 5 Біблії
 
 backtest: { slippage_pct: 0.05 }
 
-# ШІ-аналітик новин (Біблія, розділ 7). ТІНЬОВИЙ режим: лише записує оцінку NORMAL / CAUTION / RISK_OFF
-# у журнал і на сторінку статусу, на торгівлю не впливає. Потрібен ANTHROPIC_API_KEY у ~/.eth-agent/secrets.env.
-# Правило асиметрії (коли вплив увімкне Командир): ШІ може лише зменшувати ризик, ніколи не створює ордерів.
+# ШІ-аналітик (Біблія, розділ 7.5): новини + макроподії + позиції агента («контроль ставок»).
+# Раз на every_h год і позачергово при русі ціни ≥ trigger_move_pct % за 4 год або kill switch (не частіше min_gap_h).
+# mode: auto — оцінка застосовується сама, без погодження, але ЛИШЕ в бік зменшення ризику:
+#   CAUTION → нові входи ½ розміру, RISK_OFF → без нових входів; діє до valid_until (≤ max_action_h год).
+#   Ордерів ШІ не створює, не продає, стопи не чіпає. mode: shadow — лише журнал.
+# Потрібен ANTHROPIC_API_KEY у ~/.eth-agent/secrets.env; без ключа агент торгує як завжди.
 analyst:
-  news_shadow: true
+  enabled: true
+  mode: auto
   model: claude-sonnet-5-5
-  news_every_h: 4
+  every_h: 12
+  trigger_move_pct: 5
+  min_gap_h: 2
+  max_action_h: 24
   news_lookback_h: 12
   # feeds: [https://www.coindesk.com/arc/outboundfeeds/rss/, https://cointelegraph.com/rss]
 

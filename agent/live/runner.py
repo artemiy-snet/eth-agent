@@ -46,6 +46,7 @@ class Market:
     feat: v3.Features = field(default_factory=lambda: v3.Features(atr=None))
     feat_ts: int = 0
     last_minute: int = 0
+    candles: dict = field(default_factory=dict)     # tf → [(t, o, h, l, c)] для графіків панелі
 
 
 class Agent:
@@ -114,6 +115,7 @@ class Agent:
         except (NetworkError, BinanceError) as e:
             self.j.event("WARN", "features", f"ознаки не оновлено: {e}")
             return
+        self.m.candles = {"1m": k_1m[-1440:], "1h": k_1h[-1000:], "1d": k_1d[-1000:]}
         feat, ret = features_live.compute(k_atr, k_1h, k_1m, now, fp, k_1d=k_1d)
         self.m.feat, self.m.feat_ts = feat, now
         minute = now // 60_000
@@ -330,6 +332,7 @@ class Agent:
         f = self.m.feat
         self.last_status = {
             "mode": self.s.mode, "pair": self.s.pair, "sleeve": self.name or "v3", "ts": now, "price": f"{px:.2f}",
+            "strategy": getattr(self.strat, "__name__", "v3").rsplit(".", 1)[-1], "ai_mult": str(self.ai_mult),
             "bid": str(self.m.bid), "ask": str(self.m.ask), "connected": self.m.connected,
             "equity": f"{self.equity(px):.2f}",
             "start_equity": f"{self.p.budget_usdt * self.p.bots:.2f}", "ema_dist_pct": str(f.ema_dist_pct),
@@ -339,6 +342,8 @@ class Agent:
             "anchor_high": str(f.anchor_high), "entry_gate": self.strat.entry_gate(f, self.p) or "відкрито",
             "bots": [{"id": b.bot_id, "phase": b.phase.value, "usdt": f"{b.usdt:.2f}", "eth": f"{b.eth:.5f}",
                       "entry": f"{b.entry_px:.2f}" if b.entry_px else "", "stop": f"{b.stop_px:.2f}" if b.stop_px else "",
+                      "entry_ts": b.entry_ts if b.phase is not v3.Phase.FLAT else 0,
+                      "take": f"{b.sell_max:.2f}" if b.sell_max and getattr(self.strat, "__name__", "").endswith("ai_trader") else "",
                       "armed": b.buy_armed or b.sell_armed,
                       "level": f"{(f.anchor_high - D(b.bot_id) * self.p.interval_atr * f.atr + self.p.buy.limit_bot * f.atr):.2f}"
                       if f.atr and f.anchor_high and hasattr(self.p, "interval_atr") else ""}
@@ -346,7 +351,7 @@ class Agent:
         }
         return self.last_status
 
-    def run(self, stop_after_s: int | None = None) -> None:
+    def run(self, stop_after_s: int | None = None) -> str | None:
         t_end = time.time() + stop_after_s if stop_after_s else None
         self.j.event("INFO", "start", f"агент запущено, режим {self.s.mode}")
         self.n.send(f"▶️ ETH-Агент запущено, режим {self.s.mode}")
@@ -356,6 +361,14 @@ class Agent:
             try:
                 ai_step(self, [self], self.now())
                 self.tick()
+                record_equity(self, [self], self.now())
+                if (self.home / "CLEAR_KILL").exists():
+                    (self.home / "CLEAR_KILL").unlink()
+                    self.clear_kill()
+                    self.j.event("INFO", "kill", "kill switch знято з панелі (ручна команда Командира)")
+                if restart_requested(self.home):
+                    self.j.event("INFO", "start", "перезапуск з панелі")
+                    return "restart"
             except Exception as e:                       # noqa: BLE001 — нічого не ковтаємо мовчки
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")
@@ -464,6 +477,28 @@ def ai_step(owner, agents: list, now: int) -> None:
     an.maybe_run(now, market_for_analyst([a.last_status for a in agents]), book_for_analyst(agents, owner.j), force)
 
 
+def record_equity(owner, agents: list, now: int) -> None:
+    """Раз на 5 хв: загальний капітал і ціна — для графіка капіталу на панелі."""
+    if now < getattr(owner, "_next_eq", 0):
+        return
+    sts = [a.last_status for a in agents if a.last_status]
+    if not sts:
+        return
+    owner._next_eq = now + 300_000
+    total = sum(float(x.get("equity") or 0) for x in sts)
+    path = owner.home / f"equity_{owner.s.mode}.csv"
+    with path.open("a") as fh:
+        fh.write(f"{now},{total:.2f},{sts[0].get('price')}\n")
+
+
+def restart_requested(home: Path) -> bool:
+    f = home / "RESTART"
+    if f.exists():
+        f.unlink()
+        return True
+    return False
+
+
 def start_notes(j, analyst) -> None:
     from agent.features import calendar
     left = calendar.days_left(int(time.time() * 1000))
@@ -523,7 +558,7 @@ class Portfolio:
         for a in self.agents:
             a.clear_kill()
 
-    def run(self, stop_after_s: int | None = None) -> None:
+    def run(self, stop_after_s: int | None = None) -> str | None:
         t_end = time.time() + stop_after_s if stop_after_s else None
         names = ", ".join(a.name for a in self.agents)
         self.j.event("INFO", "start", f"портфель запущено ({names}), режим {self.s.mode}")
@@ -534,6 +569,14 @@ class Portfolio:
             try:
                 ai_step(self, self.agents, self.agents[0].now())
                 self.tick()
+                record_equity(self, self.agents, self.agents[0].now())
+                if (self.home / "CLEAR_KILL").exists():
+                    (self.home / "CLEAR_KILL").unlink()
+                    self.clear_kill()
+                    self.j.event("INFO", "kill", "kill switch знято з панелі (ручна команда Командира)")
+                if restart_requested(self.home):
+                    self.j.event("INFO", "start", "перезапуск з панелі")
+                    return "restart"
             except Exception as e:                       # noqa: BLE001
                 self.j.event("ERROR", "crash", f"{type(e).__name__}: {e}")
                 self.n.send(f"⚠️ [{self.s.mode}] помилка циклу: {type(e).__name__}: {e}")

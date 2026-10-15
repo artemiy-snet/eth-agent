@@ -336,3 +336,58 @@ def test_ai_sleeve_executes_vetted_signal_with_exchange_stop(tmp_path):
     assert len(c.sent) == 2 and a.ai_signal is None                        # сигнал одноразовий
     assert "сигнал ai1" in " ".join(m for _, _, _, m in j.recent_events(10))
     assert "D" in render(a)
+
+
+def test_panel_api_settings_and_csrf(tmp_path):
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from pathlib import Path
+
+    from agent.live import panel_api
+    from agent.live.settings import load
+    from agent.live.status_server import serve
+
+    a, c = make(tmp_path)
+    step(a, c, 1000)
+    srv = serve(a, 0, config_path=Path("config.portfolio.yaml"))
+    port = srv.server_address[1]
+    base = f"http://127.0.0.1:{port}"
+    try:
+        ov = _json.loads(urllib.request.urlopen(base + "/api/overview").read())
+        assert ov["price"] and ov["last_tick"] and "calendar" in ov
+        assert b"ETH" in urllib.request.urlopen(base + "/").read()
+        st = _json.loads(urllib.request.urlopen(base + "/api/settings").read())
+        assert st["values"]["portfolio.preset"] and "ANTHROPIC_API_KEY" in st["secrets"]
+
+        def post(path, body, hdr=True):
+            req = urllib.request.Request(base + path, data=_json.dumps(body).encode(), method="POST",
+                                         headers={"Content-Type": "application/json", **({"X-ETH-Agent": "1"} if hdr else {})})
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    return resp.status, _json.loads(resp.read())
+            except urllib.error.HTTPError as e:
+                return e.code, _json.loads(e.read())
+        code, _ = post("/api/stop", {}, hdr=False)                      # без заголовка — сторонній сайт
+        assert code == 403 and not (tmp_path / "STOP").exists()
+        code, r = post("/api/settings", {"values": {"agent.mode": "live"}})
+        assert code == 400 and r["errors"]                                # live з панелі неможливий
+        code, r = post("/api/settings", {"values": {"risk.max_dd_pct": 500}})
+        assert code == 400
+        code, r = post("/api/settings", {"values": {"portfolio.preset": "агресивний+ші", "analyst.every_h": 8},
+                                         "secrets": {"ANTHROPIC_API_KEY": "sk-test-1234abcd"}})
+        assert code == 200 and r["ok"]
+        sec = (tmp_path / "secrets.env").read_text()
+        assert "ANTHROPIC_API_KEY=sk-test-1234abcd" in sec and oct((tmp_path / "secrets.env").stat().st_mode)[-3:] == "600"
+        st = _json.loads(urllib.request.urlopen(base + "/api/settings").read())
+        assert st["secrets"]["ANTHROPIC_API_KEY"] == "…abcd" and "sk-test" not in _json.dumps(st)
+        s = load(Path("config.portfolio.yaml"), home=tmp_path)
+        assert [x.name for x in s.sleeves] == ["B1", "C", "D"] and s.analyst["every_h"] == 8
+        code, r = post("/api/settings", {"values": {"agent.mode": "testnet"}})
+        assert code == 400                                                 # немає ключів Binance
+        code, _ = post("/api/restart", {})
+        assert code == 200 and runner.restart_requested(tmp_path) and not runner.restart_requested(tmp_path)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert panel_api.mask("abcdef") == "…cdef"

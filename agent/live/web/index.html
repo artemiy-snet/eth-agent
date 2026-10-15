@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0d">
+<title>ETH-Агент</title>
+<style>
+:root{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --surface-2:#222220; --raise:#2a2a27;
+  --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s7:#9085e9;
+  --up:#199e70; --down:#e66767;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b; --good-ink:#0ca30c;
+  --zone-stop:rgba(230,103,103,.16); --zone-take:rgba(25,158,112,.16); --zone-up:rgba(25,158,112,.07); --zone-down:rgba(230,103,103,.07);
+  --accent:#3987e5;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f3f2ee; --raise:#ebeae5;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s7:#6250d6;
+    --up:#1baf7a; --down:#e34948; --good-ink:#006300;
+    --zone-stop:rgba(227,73,72,.12); --zone-take:rgba(27,175,122,.14); --zone-up:rgba(27,175,122,.07); --zone-down:rgba(227,73,72,.06);
+    --accent:#2a78d6;
+  }
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f3f2ee; --raise:#ebeae5;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s7:#6250d6;
+  --up:#1baf7a; --down:#e34948; --good-ink:#006300;
+  --zone-stop:rgba(227,73,72,.12); --zone-take:rgba(27,175,122,.14); --zone-up:rgba(27,175,122,.07); --zone-down:rgba(227,73,72,.06);
+  --accent:#2a78d6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--page) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--ring)}
+.bar{display:flex;align-items:center;gap:10px;height:52px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.2px}
+.logo svg{width:22px;height:22px}
+.chip{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--raise);color:var(--ink-2)}
+.chip.paper{color:var(--s1)} .chip.testnet{color:var(--s4)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.dot.on{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent)} .dot.off{background:var(--crit)}
+.spacer{flex:1}
+.iconbtn{border:1px solid var(--ring);background:var(--surface);border-radius:10px;height:32px;min-width:36px;padding:0 10px;cursor:pointer;font-weight:600;font-size:12px}
+nav.tabs{display:flex;gap:4px}
+nav.tabs button{border:0;background:transparent;padding:8px 12px;border-radius:10px;color:var(--ink-2);cursor:pointer;font-weight:600}
+nav.tabs button[aria-selected="true"]{background:var(--raise);color:var(--ink)}
+@media (max-width:760px){
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--ring);padding:6px 6px calc(6px + env(safe-area-inset-bottom));justify-content:space-around}
+  nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;padding:6px 2px}
+  nav.tabs button svg{width:20px;height:20px}
+}
+@media (min-width:761px){ nav.tabs button svg{display:none} body{padding-bottom:24px}}
+section.tab{display:none;padding:16px 0} section.tab.on{display:block}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1000px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:16px;padding:14px;min-width:0}
+.card h2{font-size:13px;font-weight:600;color:var(--ink-2);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.card h2 .r{margin-left:auto;font-weight:500;color:var(--muted);font-size:12px}
+.kpi .v{font-size:22px;font-weight:650;letter-spacing:-.3px;white-space:nowrap}
+.kpi .s{font-size:12px;color:var(--ink-2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .l{font-size:12px;color:var(--muted);margin-bottom:4px}
+.pos{color:var(--good-ink)} .neg{color:var(--down)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-weight:650;font-size:12px;background:var(--raise)}
+.pill i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.st-NORMAL i{background:var(--good)} .st-CAUTION i{background:var(--warn)} .st-RISK_OFF i{background:var(--crit)}
+.alerts{display:grid;gap:8px;margin-bottom:12px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--ring);border-left:4px solid var(--warn)}
+.alert.crit{border-left-color:var(--crit)} .alert.info{border-left-color:var(--s1)}
+.alert b{white-space:nowrap}
+.two{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.half{grid-template-columns:1fr 1fr} @media (max-width:760px){.half{grid-template-columns:1fr}}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:10px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;padding:4px 10px;border-radius:8px;color:var(--ink-2);cursor:pointer;font-size:12px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--raise);color:var(--ink)}
+.toggles{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.tg{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ring);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--ink-2);background:transparent}
+.tg[aria-pressed="false"]{opacity:.45}
+.tg .k{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chart{position:relative;width:100%;touch-action:pan-y;user-select:none}
+.chart svg{display:block;width:100%;height:100%}
+.tip{position:absolute;pointer-events:none;background:var(--surface-2);border:1px solid var(--ring);border-radius:10px;padding:8px 10px;font-size:12px;min-width:140px;box-shadow:0 6px 24px rgba(0,0,0,.25);display:none;z-index:5}
+.tip .t{color:var(--muted);margin-bottom:4px}
+.tip .row{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
+.tip .row b{color:var(--ink)} .tip .row span{color:var(--ink-2)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--ink-2);margin-top:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.sleeve{display:grid;gap:8px}
+.sleeve .top{display:flex;align-items:center;gap:8px}
+.sleeve .name{font-weight:650}
+.alloc{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;background:var(--surface)}
+.alloc i{display:block;height:100%}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{color:var(--muted);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+.tbl td{padding:7px 8px;border-bottom:1px solid var(--grid);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl td.wrap{white-space:normal}
+.scroll{overflow-x:auto}
+.muted{color:var(--muted)} .small{font-size:12px}
+ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.news li{display:grid;gap:2px;padding-bottom:8px;border-bottom:1px solid var(--grid)}
+.news .src{font-size:11px;color:var(--muted)}
+.meter{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--s1);border-radius:3px}
+.cal li{display:flex;align-items:center;gap:10px}
+.cal .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--raise);min-width:48px;text-align:center}
+.cal .badge.fomc{color:var(--s7)} .cal .badge.cpi{color:var(--s4)}
+.cal .when{margin-left:auto;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.btn{border:1px solid var(--ring);background:var(--raise);border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.btn.danger{background:var(--crit);border-color:transparent;color:#fff}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:default}
+.form{display:grid;gap:14px}
+.field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--grid)}
+.field:last-child{border-bottom:0}
+@media (max-width:560px){.field{grid-template-columns:1fr}}
+.field label{font-weight:550}
+.field .h{grid-column:1/-1;font-size:12px;color:var(--muted);margin-top:-2px}
+.field input[type=number],.field input[type=password],.field input[type=text],.field select{width:100%;background:var(--surface-2);border:1px solid var(--ring);border-radius:10px;padding:8px 10px}
+.field .w{grid-column:1/-1;font-size:12px;color:var(--warn)}
+.switch{position:relative;width:44px;height:26px;justify-self:end}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:var(--raise);border-radius:13px;transition:.15s;cursor:pointer;border:1px solid var(--ring)}
+.switch span:before{content:"";position:absolute;width:20px;height:20px;left:2px;top:2px;border-radius:50%;background:var(--ink-2);transition:.15s}
+.switch input:checked+span{background:var(--accent)} .switch input:checked+span:before{transform:translateX(18px);background:#fff}
+.keyrow{display:flex;gap:8px;align-items:center}
+.keyrow input{flex:1}
+.save{position:sticky;bottom:calc(70px + env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--ring);border-radius:14px;backdrop-filter:blur(8px)}
+@media (min-width:761px){.save{bottom:16px}}
+.msg{font-size:12.5px} .msg.ok{color:var(--good-ink)} .msg.err{color:var(--down)}
+.empty{color:var(--muted);font-size:13px;padding:18px 0;text-align:center}
+.stats{grid-template-columns:repeat(4,minmax(0,1fr))} @media (max-width:560px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fact{display:flex;gap:8px} .fact:before{content:"";flex:0 0 6px;height:6px;margin-top:7px;border-radius:50%;background:var(--s1)}
+.anom{display:flex;gap:8px;color:var(--ink)} .anom:before{content:"⚠";color:var(--warn)}
+.proposal{border:1px dashed var(--ring);border-radius:12px;padding:10px;display:grid;gap:4px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px} .kv dt{color:var(--muted)} .kv dd{margin:0}
+.lvl-WARN{color:var(--warn)} .lvl-ERROR{color:var(--down)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+/* ---- пульс: агент живий ---- */
+@keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c,var(--good)) 60%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes flashUp{0%{background:color-mix(in srgb,var(--up) 35%,transparent)}100%{background:transparent}}
+@keyframes flashDn{0%{background:color-mix(in srgb,var(--down) 35%,transparent)}100%{background:transparent}}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.heart{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);white-space:nowrap}
+.heart .dot{animation:ping 1.6s ease-out infinite}
+.heart.stale .dot{--c:var(--crit);background:var(--crit)} .heart.stale{color:var(--down)}
+.heart.beat .dot{transform:scale(1.35);transition:transform .15s}
+.blink{animation:blink 1.2s ease-in-out infinite}
+.flash-up{animation:flashUp 1.2s ease-out} .flash-dn{animation:flashDn 1.2s ease-out}
+.pulse{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:center;position:relative;overflow:hidden}
+.pulse:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:sweep 2.4s linear infinite;opacity:.7}
+.pulse .stats{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2)}
+.pulse .stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+.feed{display:grid;gap:4px;grid-column:1/-1;font-size:12.5px}
+.feed div{display:flex;gap:8px;animation:slideIn .4s ease-out}
+.feed time{color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.feed .new{color:var(--ink)} .feed .old{color:var(--ink-2)}
+.ring{width:34px;height:34px}
+.tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--raise)}
+.tag.armed{color:var(--s4)} .tag.pending{color:var(--s1)} .tag.ai{color:var(--s7)}
+@media (prefers-reduced-motion: reduce){.heart .dot,.blink,.pulse:after,.feed div{animation:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--s7)" d="M12 2 5 12.2 12 16l7-3.8z"/><path fill="var(--s1)" d="M12 17.4 5 13.6 12 22l7-8.4z" opacity=".85"/></svg>
+      <span data-i18n="app">ETH-Агент</span>
+    </div>
+    <span class="chip" id="modeChip">—</span>
+    <span class="heart" id="heart" aria-live="polite"><span class="dot on" id="connDot"></span><span id="heartTxt">…</span></span>
+    <div class="spacer"></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="ov" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg><span data-i18n="tab_ov">Огляд</span></button>
+      <button role="tab" data-tab="ai" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="tab_ai">Прогноз і новини</span></button>
+      <button role="tab" data-tab="tr" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="tab_tr">Угоди</span></button>
+      <button role="tab" data-tab="st" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="tab_st">Налаштування</span></button>
+    </nav>
+    <button class="iconbtn" id="langBtn" aria-label="Language">EN</button>
+    <button class="iconbtn" id="themeBtn" aria-label="Theme"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ОГЛЯД -->
+  <section class="tab on" id="tab-ov">
+    <div class="alerts" id="alerts"></div>
+    <div class="card pulse" id="pulse" style="margin-bottom:12px">
+      <svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--grid)" stroke-width="3"/>
+        <circle id="ringArc" cx="18" cy="18" r="15" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-dasharray="94.2" stroke-dashoffset="94.2" transform="rotate(-90 18 18)"/></svg>
+      <div><div style="font-weight:650" id="pulseTitle">…</div><div class="stats" id="pulseStats"></div></div>
+      <div class="feed" id="feed"></div>
+    </div>
+    <div class="grid kpis" id="kpis"></div>
+    <div class="grid two" style="margin-top:12px">
+      <div class="card">
+        <h2><span data-i18n="price_chart">Ціна ETH/USDT</span>
+          <span class="r"><span class="seg" id="rangeSeg">
+            <button data-r="24h" aria-pressed="false">24г</button><button data-r="7d" aria-pressed="true">7д</button>
+            <button data-r="30d" aria-pressed="false">30д</button><button data-r="1y" aria-pressed="false">1р</button></span></span></h2>
+        <div class="chart" id="priceChart" style="height:340px"></div>
+        <div class="toggles" id="overlays"></div>
+      </div>
+      <div class="grid" style="align-content:start">
+        <div class="card" id="aiMini"></div>
+        <div class="card"><h2 data-i18n="next_events">Найближчі події</h2><ul class="clean cal" id="calMini"></ul></div>
+      </div>
+    </div>
+    <div class="grid half" style="margin-top:12px">
+      <div class="card"><h2><span data-i18n="equity_chart">Капітал портфеля vs ETH</span><span class="r" data-i18n="indexed">індекс, старт = 100</span></h2>
+        <div class="chart" id="equityChart" style="height:220px"></div><div class="legend" id="equityLegend"></div></div>
+      <div class="card"><h2 data-i18n="sleeves">Стратегії (рукави)</h2><div class="grid" id="sleeves"></div></div>
+    </div>
+  </section>
+
+  <!-- ПРОГНОЗ І НОВИНИ -->
+  <section class="tab" id="tab-ai">
+    <div class="grid two">
+      <div class="card" id="aiFull"></div>
+      <div class="grid" style="align-content:start">
+        <div class="card"><h2 data-i18n="expect">Очікування за бектестом (7 років)</h2><div id="expect"></div></div>
+        <div class="card"><h2 data-i18n="calendar">Календар макроподій США</h2><ul class="clean cal" id="calFull"></ul></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px"><h2><span data-i18n="ai_timeline">Оцінки ШІ на графіку ціни</span><span class="r" data-i18n="ai_timeline_hint">крапка = оцінка, колір = режим</span></h2>
+      <div class="chart" id="aiChart" style="height:220px"></div><div class="legend" id="aiLegend"></div></div>
+    <div class="card" style="margin-top:12px"><h2><span data-i18n="news">Новини</span><span class="r" id="newsAt"></span></h2><ul class="clean news" id="news"></ul></div>
+  </section>
+
+  <!-- УГОДИ -->
+  <section class="tab" id="tab-tr">
+    <div class="grid stats" id="tradeStats"></div>
+    <div class="card" style="margin-top:12px"><h2><span data-i18n="pnl_chart">Результат кожної угоди, USDT</span></h2>
+      <div class="chart" id="pnlChart" style="height:200px"></div></div>
+    <div class="card" style="margin-top:12px"><h2 data-i18n="trades">Угоди</h2><div class="scroll"><table class="tbl" id="tradesTbl"></table></div></div>
+    <div class="card" style="margin-top:12px"><h2 data-i18n="journal">Журнал подій</h2>
+      <div class="filters"><span class="seg" id="lvlSeg"><button data-l="" aria-pressed="true" data-i18n="all">усі</button><button data-l="WARN" aria-pressed="false" data-i18n="warnings">попередження</button><button data-l="ai" aria-pressed="false">ШІ</button></span></div>
+      <div class="scroll"><table class="tbl" id="eventsTbl"></table></div></div>
+  </section>
+
+  <!-- НАЛАШТУВАННЯ -->
+  <section class="tab" id="tab-st">
+    <div class="grid" id="settings"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// ---------- i18n ----------
+const T = {
+ uk:{app:"ETH-Агент",tab_ov:"Огляд",tab_ai:"Прогноз і новини",tab_tr:"Угоди",tab_st:"Налаштування",
+  price_chart:"Ціна ETH/USDT",next_events:"Найближчі події",equity_chart:"Капітал портфеля vs ETH",indexed:"індекс, старт = 100",
+  sleeves:"Стратегії (рукави)",expect:"Очікування за бектестом (7 років)",calendar:"Календар макроподій США",
+  ai_timeline:"Оцінки ШІ на графіку ціни",ai_timeline_hint:"крапка = оцінка, колір = режим",news:"Новини",
+  pnl_chart:"Результат кожної угоди, USDT",trades:"Угоди",journal:"Журнал подій",all:"усі",warnings:"попередження",
+  k_price:"Ціна ETH",k_equity:"Капітал",k_regime:"Режим ринку",k_ai:"ШІ-аналітик",k_event:"Наступна подія",
+  vs24:"за 24 год",regime_up:"висхідний",regime_down:"низхідний",vs_ema:"від EMA200 (днів)",
+  ai_off:"вимкнено",ai_nokey:"немає ключа",until:"до",no_brake:"входи без обмежень",brake_half:"входи ½ розміру",brake_zero:"нові входи заборонено",
+  in_h:"через {h} год",in_d:"через {d} дн",ago:"{h} год тому",now_:"зараз",
+  ov_ema200:"EMA200 (дні)",ov_ema50:"EMA50",ov_levels:"Рівні входу",ov_pos:"Позиції і стопи",ov_trades:"Угоди",ov_events:"FOMC / CPI",ov_ai:"Оцінки ШІ",ov_regime:"Зона режиму",
+  buy:"Купівля",sell:"Продаж",entry:"Вхід",stop:"Стоп",take:"Тейк",level:"Рівень",pnl:"PnL",open:"відкрита",
+  o:"Відкр.",h:"Макс.",l:"Мін.",c:"Закр.",portfolio:"Портфель",hold_eth:"Тримати ETH",
+  st_working:"працює",st_killed:"KILL SWITCH",entries:"входи",open_gate:"відкрито",flat:"в USDT",in_eth:"в ETH",positions:"Позиції",
+  kill_alert:"Kill switch: нові входи заблоковано. Стопи працюють.",stop_alert:"STOP: нові входи заборонено вручну.",
+  ai_brake_alert:"ШІ гальмує нові входи",anom:"ШІ помітив",nodata:"Даних ще немає — агент збирає їх",
+  confidence:"впевненість",facts:"Факти",events_ahead:"Події попереду",impact:"Вплив на стратегію",positions_review:"Контроль позицій",
+  anomalies:"Аномалії",proposal:"Ідея ШІ-трейдера",approved:"схвалено кодом і критиком",rejected:"відхилено",stage:"етап",
+  thesis:"Теза",invalidation:"Спростування",critic:"Критик",mode_auto:"діє автоматично (лише зменшує ризик)",mode_shadow:"тіньовий режим",
+  next_run:"наступна оцінка",no_ai:"Оцінок ШІ ще немає. Додай ANTHROPIC_API_KEY у Налаштуваннях.",
+  cagr:"Річна",maxdd:"Макс. просадка",current:"поточний",news_empty:"Новини завантажуються…",
+  t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
+  t_in:"Вхід",t_out:"Вихід",t_qty:"ETH",ev_time:"Час",ev_msg:"Подія",
+  s_general:"Загальне",s_portfolio:"Портфель",s_keys:"Ключі доступу",s_ai:"ШІ-аналітик",s_ai_trader:"ШІ-трейдер (рукав D)",s_strategy:"Стратегія A/B",s_risk:"Ризик-менеджмент",s_control:"Керування агентом",
+  save:"Зберегти",restart:"Перезапустити агента",saved:"Збережено. Натисни «Перезапустити агента», щоб застосувати.",
+  restarting:"Перезапуск… сторінка оновиться за ~15 с.",check:"Перевірити",key_set:"задано",key_none:"не задано",
+  key_ph:"вставити новий ключ",keys_help:"Ключі зберігаються лише на телефоні (~/.eth-agent/secrets.env, доступ тільки власнику), в панель повертаються тільки останні 4 символи. Binance — лише testnet.binance.vision, без права виведення.",
+  stop_btn:"STOP — заборонити входи",flat_btn:"STOP FLATTEN — продати все",clear_btn:"Зняти kill switch",
+  confirm_flat:"Продати всі позиції за ринком і зупинити входи?",confirm_clear:"Зняти kill switch і дозволити нові входи?",confirm_stop:"Заборонити нові входи?",
+  done:"Готово",preset_hint:"За бектестом 7 років: річна {c} %, макс. просадка {d} %",preset_ai:"включає рукав D (ШІ-трейдер, 10 %) — без бектесту",
+  warn_above:"Вище {v} — більший ризик (Біблія: рішення Командира)",errs:"Помилки",lite:"Проста версія сторінки",
+  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (ШІ)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
+  updated:"оновлено",price_now:"ціна",alive:"живий",stale:"немає зв'язку",sec_ago:"{s} с тому",pulse_ok:"Агент працює · крок кожні {p} с",pulse_bad:"Агент не відповідає — перевір Termux",
+  last_tick:"останній крок",next_ai:"ШІ через",ai_running:"ШІ аналізує…",armed:"зведено",pending:"ордер",watching:"стежить за ціною",bots_armed:"ботів зведено",positions_open:"позицій",regime_zone_up:"вище EMA200",regime_zone_down:"нижче EMA200"},
+ en:{app:"ETH Agent",tab_ov:"Overview",tab_ai:"Outlook & news",tab_tr:"Trades",tab_st:"Settings",
+  price_chart:"ETH/USDT price",next_events:"Upcoming events",equity_chart:"Portfolio equity vs ETH",indexed:"index, start = 100",
+  sleeves:"Strategies (sleeves)",expect:"Backtest expectations (7 years)",calendar:"US macro calendar",
+  ai_timeline:"AI assessments on the price chart",ai_timeline_hint:"dot = assessment, colour = regime",news:"News",
+  pnl_chart:"Result of each trade, USDT",trades:"Trades",journal:"Event log",all:"all",warnings:"warnings",
+  k_price:"ETH price",k_equity:"Equity",k_regime:"Market regime",k_ai:"AI analyst",k_event:"Next event",
+  vs24:"24 h",regime_up:"uptrend",regime_down:"downtrend",vs_ema:"vs EMA200 (days)",
+  ai_off:"off",ai_nokey:"no key",until:"until",no_brake:"entries unrestricted",brake_half:"entries at ½ size",brake_zero:"new entries blocked",
+  in_h:"in {h} h",in_d:"in {d} d",ago:"{h} h ago",now_:"now",
+  ov_ema200:"EMA200 (days)",ov_ema50:"EMA50",ov_levels:"Entry levels",ov_pos:"Positions & stops",ov_trades:"Trades",ov_events:"FOMC / CPI",ov_ai:"AI assessments",ov_regime:"Regime zone",
+  buy:"Buy",sell:"Sell",entry:"Entry",stop:"Stop",take:"Take",level:"Level",pnl:"PnL",open:"open",
+  o:"Open",h:"High",l:"Low",c:"Close",portfolio:"Portfolio",hold_eth:"Hold ETH",
+  st_working:"running",st_killed:"KILL SWITCH",entries:"entries",open_gate:"open",flat:"in USDT",in_eth:"in ETH",positions:"Positions",
+  kill_alert:"Kill switch: new entries blocked. Stops stay active.",stop_alert:"STOP: new entries blocked manually.",
+  ai_brake_alert:"AI is braking new entries",anom:"AI noticed",nodata:"No data yet — the agent is collecting it",
+  confidence:"confidence",facts:"Facts",events_ahead:"Events ahead",impact:"Impact on strategy",positions_review:"Position check",
+  anomalies:"Anomalies",proposal:"AI trader idea",approved:"approved by code and critic",rejected:"rejected",stage:"stage",
+  thesis:"Thesis",invalidation:"Invalidation",critic:"Critic",mode_auto:"applied automatically (risk-down only)",mode_shadow:"shadow mode",
+  next_run:"next assessment",no_ai:"No AI assessments yet. Add ANTHROPIC_API_KEY in Settings.",
+  cagr:"Annual",maxdd:"Max drawdown",current:"current",news_empty:"Loading news…",
+  t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
+  t_in:"Entry",t_out:"Exit",t_qty:"ETH",ev_time:"Time",ev_msg:"Event",
+  s_general:"General",s_portfolio:"Portfolio",s_keys:"Access keys",s_ai:"AI analyst",s_ai_trader:"AI trader (sleeve D)",s_strategy:"Strategy A/B",s_risk:"Risk management",s_control:"Agent control",
+  save:"Save",restart:"Restart agent",saved:"Saved. Press “Restart agent” to apply.",
+  restarting:"Restarting… the page will refresh in ~15 s.",check:"Check",key_set:"set",key_none:"not set",
+  key_ph:"paste a new key",keys_help:"Keys are stored only on the phone (~/.eth-agent/secrets.env, owner-only access); the panel only ever shows the last 4 characters. Binance — testnet.binance.vision only, no withdrawal rights.",
+  stop_btn:"STOP — block entries",flat_btn:"STOP FLATTEN — sell everything",clear_btn:"Clear kill switch",
+  confirm_flat:"Sell all positions at market and block entries?",confirm_clear:"Clear the kill switch and allow new entries?",confirm_stop:"Block new entries?",
+  done:"Done",preset_hint:"7-year backtest: {c} % a year, max drawdown {d} %",preset_ai:"includes sleeve D (AI trader, 10 %) — no backtest",
+  warn_above:"Above {v} means more risk (Bible: Commander's decision)",errs:"Errors",lite:"Simple page",
+  binance_key:"Binance API key (testnet)",binance_secret:"Binance API secret (testnet)",anthropic_key:"Anthropic API key (AI)",tg_token:"Telegram bot token",tg_chat:"Telegram chat id",
+  updated:"updated",price_now:"price",alive:"alive",stale:"no link",sec_ago:"{s} s ago",pulse_ok:"Agent running · step every {p} s",pulse_bad:"Agent not responding — check Termux",
+  last_tick:"last step",next_ai:"AI in",ai_running:"AI is analysing…",armed:"armed",pending:"order",watching:"watching price",bots_armed:"bots armed",positions_open:"positions",regime_zone_up:"above EMA200",regime_zone_down:"below EMA200"}
+};
+const SLEEVE_NAMES = {
+  A:{uk:"A · Денний відскок",en:"A · Daily bounce"}, B:{uk:"B · Відскок розширений",en:"B · Extended bounce"},
+  B1:{uk:"B1 · Відскок, ризик 1 %",en:"B1 · Bounce, 1 % risk"}, C:{uk:"C · Режимне утримання",en:"C · Regime hold"},
+  D:{uk:"D · ШІ-трейдер",en:"D · AI trader"}, v3:{uk:"Денний відскок",en:"Daily bounce"}};
+const SLEEVE_COLOR = {A:"--s1",B:"--s1",B1:"--s1",C:"--s3",D:"--s7",v3:"--s1"};
+let LANG = store("lang") || ((navigator.language||"").toLowerCase().startsWith("en") ? "en" : "uk");
+function store(k,v){try{if(v===undefined)return localStorage.getItem("eth_"+k);localStorage.setItem("eth_"+k,v)}catch(e){return null}}
+function t(k,vars){let s=(T[LANG]&&T[LANG][k])||T.uk[k]||k;if(vars)for(const [a,b] of Object.entries(vars))s=s.replace("{"+a+"}",b);return s}
+function applyI18n(){document.documentElement.lang=LANG;document.querySelectorAll("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));
+  document.getElementById("langBtn").textContent=LANG==="uk"?"EN":"UA";
+  document.querySelectorAll("#rangeSeg button").forEach(b=>b.textContent={uk:{"24h":"24г","7d":"7д","30d":"30д","1y":"1р"},en:{"24h":"24h","7d":"7d","30d":"30d","1y":"1y"}}[LANG][b.dataset.r]);}
+
+// ---------- helpers ----------
+const $=s=>document.querySelector(s);
+function el(tag,attrs,...kids){const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs||{})){if(v==null||v===false)continue;
+  if(k==="class")e.className=v;else if(k==="style")e.style.cssText=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else e.setAttribute(k,v===true?"":v)}
+  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c instanceof Node?c:document.createTextNode(String(c)))}return e}
+// append без null (Element.append(null) вставляє текст «null»)
+const add=(parent,...kids)=>{for(const c of kids.flat())if(c!=null&&c!==false)parent.append(c);return parent};
+const SVGNS="http://www.w3.org/2000/svg";
+function sv(tag,attrs,...kids){const e=document.createElementNS(SVGNS,tag);for(const [k,v] of Object.entries(attrs||{}))if(v!=null)e.setAttribute(k,v);
+  for(const c of kids.flat()){if(c==null)continue;e.append(c instanceof Node?c:document.createTextNode(String(c)))}return e}
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt=(x,d=2)=>x==null||isNaN(x)?"—":Number(x).toLocaleString(LANG==="uk"?"uk-UA":"en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtSigned=(x,d=2)=>x==null||isNaN(x)?"—":(x>0?"+":"")+fmt(x,d);
+function fmtTime(ms,withDate=true){const d=new Date(ms);return d.toLocaleString(LANG==="uk"?"uk-UA":"en-GB",withDate?{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}:{hour:"2-digit",minute:"2-digit"})}
+function rel(ms){const h=(ms-Date.now())/3.6e6;if(Math.abs(h)<1)return t("now_");if(h<0)return t("ago",{h:Math.round(-h)});return h<48?t("in_h",{h:Math.round(h)}):t("in_d",{d:Math.round(h/24)})}
+async function api(path,opt){const r=await fetch(path,opt);if(!r.ok&&r.status!==400)throw new Error(r.status);return r.json()}
+async function post(path,body){return api(path,{method:"POST",headers:{"Content-Type":"application/json","X-ETH-Agent":"1"},body:JSON.stringify(body||{})})}
+function regimePill(r){return el("span",{class:"pill st-"+r},el("i"),r)}
+function ema(arr,span){const a=2/(span+1);let v=null;return arr.map((x,i)=>{v=v==null?x:v+a*(x-v);return i+1>=span?v:null})}
+function aggregate(c,n){if(n<=1)return c;const out=[];for(let i=0;i<c.length;i+=n){const g=c.slice(i,i+n);out.push([g[0][0],g[0][1],Math.max(...g.map(x=>x[2])),Math.min(...g.map(x=>x[3])),g[g.length-1][4]])}return out}
+function niceTicks(lo,hi,n){const span=hi-lo||1,step0=span/n,mag=Math.pow(10,Math.floor(Math.log10(step0))),err=step0/mag;
+  const step=(err>=7.5?10:err>=3.5?5:err>=1.5?2:1)*mag;const out=[];for(let v=Math.ceil(lo/step)*step;v<=hi+1e-9;v+=step)out.push(v);return out}
+
+// ---------- state ----------
+const S={ov:null,candles:{},range:store("range")||"7d",trades:[],ai:[],equity:[],news:null,events:[],lvl:"",
+  overlays:Object.assign({ema200:true,ema50:false,levels:true,pos:true,trades:true,events:true,ai:true,regime:true},JSON.parse(store("ov")||"{}"))};
+
+// ---------- tabs / header ----------
+document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
+function showTab(id){document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===id));
+  document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("on",s.id==="tab-"+id));store("tab",id);
+  if(id==="ai")loadAiTab();if(id==="tr")loadTrades();if(id==="st")loadSettings();if(id==="ov")drawAll()}
+$("#langBtn").addEventListener("click",()=>{LANG=LANG==="uk"?"en":"uk";store("lang",LANG);applyI18n();renderOverview();drawAll();
+  const cur=store("tab")||"ov";if(cur==="ai")loadAiTab();if(cur==="tr")loadTrades();if(cur==="st")loadSettings()});
+$("#themeBtn").addEventListener("click",()=>{const cur=document.documentElement.dataset.theme;const next=cur==="light"?"dark":cur==="dark"?"":"light";
+  if(next)document.documentElement.dataset.theme=next;else delete document.documentElement.dataset.theme;store("theme",next);drawAll()});
+(()=>{const th=store("theme");if(th)document.documentElement.dataset.theme=th})();
+document.querySelectorAll("#rangeSeg button").forEach(b=>b.addEventListener("click",()=>{S.range=b.dataset.r;store("range",S.range);
+  document.querySelectorAll("#rangeSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));loadCandles().then(drawPrice)}));
+document.querySelectorAll("#rangeSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.r===S.range));
+
+function buildOverlayToggles(){const box=$("#overlays");box.textContent="";
+  const defs=[["regime","ov_regime","--s3"],["ema200","ov_ema200","--s1"],["ema50","ov_ema50","--s7"],["levels","ov_levels","--s4"],
+    ["pos","ov_pos","--down"],["trades","ov_trades","--ink-2"],["events","ov_events","--s5"],["ai","ov_ai","--warn"]];
+  for(const [k,lab,col] of defs){const b=el("button",{class:"tg","aria-pressed":String(!!S.overlays[k]),onclick:()=>{S.overlays[k]=!S.overlays[k];store("ov",JSON.stringify(S.overlays));buildOverlayToggles();drawPrice()}},
+    el("i",{class:"k",style:"background:var("+col+")"}),t(lab));box.append(b)}}
+
+// ---------- loading ----------
+async function loadOverview(){try{const prev=S.ov;S.ov=await api("/api/overview");S.ovAt=Date.now();S.fail=0;renderOverview();flashPrice(prev,S.ov)}catch(e){S.fail=(S.fail||0)+1;heartbeat()}}
+function flashPrice(prev,cur){if(!prev||!cur)return;const a=parseFloat(prev.price),b=parseFloat(cur.price);if(!a||!b||a===b)return;
+  const v=document.querySelector("#kpis .kpi .v");if(!v)return;v.classList.remove("flash-up","flash-dn");void v.offsetWidth;v.classList.add(b>a?"flash-up":"flash-dn")}
+// серцебиття: щосекунди — скільки минуло від останнього кроку агента
+function heartbeat(){const h=$("#heart"),o=S.ov;if(!o){$("#heartTxt").textContent="…";return}
+  const age=Math.max(0,Math.round((Date.now()-(S.ovAt||0))/1000+(o.now-o.last_tick)/1000));const stale=S.fail>1||!o.last_tick||age>Math.max(60,o.poll_s*4)||!o.connected;
+  h.classList.toggle("stale",stale);$("#connDot").className="dot "+(stale?"off":"on");
+  $("#heartTxt").textContent=stale?t("stale"):`${t("alive")} · ${t("sec_ago",{s:age})}`;
+  if(!stale&&age<=1){h.classList.add("beat");setTimeout(()=>h.classList.remove("beat"),180)}
+  const arc=$("#ringArc");if(arc){const frac=Math.min(1,age/(o.poll_s||10));arc.setAttribute("stroke-dashoffset",(94.2*(1-frac)).toFixed(1));arc.setAttribute("stroke",css(stale?"--crit":"--accent"))}
+  const ai=$("#nextAi");if(ai&&o.analyst&&o.analyst.next_run){const s2=Math.max(0,Math.round((o.analyst.next_run-o.now)/1000-(Date.now()-S.ovAt)/1000));
+    ai.textContent=o.analyst.running?t("ai_running"):`${Math.floor(s2/3600)}:${String(Math.floor(s2%3600/60)).padStart(2,"0")}:${String(s2%60).padStart(2,"0")}`}}
+setInterval(heartbeat,1000);
+function renderPulse(){const o=S.ov;if(!o)return;const stale=!o.connected;
+  const bots=(o.sleeves||[]).flatMap(s=>s.bots||[]);const armed=bots.filter(b=>b.armed).length,pend=bots.filter(b=>String(b.phase).startsWith("PENDING")).length,longs=bots.filter(b=>b.phase==="LONG").length;
+  $("#pulseTitle").textContent=stale?t("pulse_bad"):t("pulse_ok",{p:o.poll_s});$("#pulseTitle").className=stale?"neg":"";
+  const st=$("#pulseStats");st.textContent="";
+  add(st,el("span",{},`${t("last_tick")}: `,el("b",{},o.last_tick?fmtTime(o.last_tick,false):"—")),
+    el("span",{},`${t("positions_open")}: `,el("b",{},longs)),
+    el("span",{class:armed?"blink":""},`⚡ ${t("bots_armed")}: `,el("b",{},armed)),
+    pend?el("span",{class:"blink",style:"color:var(--s1)"},`⏳ ${t("pending")}: `,el("b",{},pend)):null,
+    o.analyst?el("span",{class:o.analyst.running?"blink":"",style:"color:var(--s7)"},`🧠 ${t("next_ai")}: `,el("b",{id:"nextAi"},"…")):null,
+    el("span",{},"👁 "+t("watching")));
+  const feed=$("#feed");const seen=S.seenEv||0;feed.textContent="";
+  for(const e of (o.recent||[]).slice(0,4)){const row=el("div",{class:e.ts>seen&&seen?"new":"old"},el("time",{},fmtTime(e.ts,false)),el("span",{class:"lvl-"+e.level},e.msg));
+    if(!(e.ts>seen&&seen))row.style.animation="none";feed.append(row)}
+  S.seenEv=Math.max(seen,...(o.recent||[]).map(e=>e.ts),0);heartbeat()}
+async function loadCandles(){const tf={"24h":"1m","7d":"1h","30d":"1h","1y":"1d"}[S.range];
+  try{S.candles[tf]=await api("/api/candles?tf="+tf);if(!S.candles["1d"]||tf!=="1d")S.candles["1d"]=await api("/api/candles?tf=1d")}catch(e){}}
+async function loadSide(){try{S.trades=await api("/api/trades")}catch(e){} try{S.equity=await api("/api/equity")}catch(e){} try{S.ai=(await api("/api/ai")).history}catch(e){}}
+function drawAll(){drawPrice();drawEquity();if((store("tab")||"ov")==="ai")drawAiChart();if((store("tab")||"ov")==="tr")drawPnl()}
+
+// ---------- overview render ----------
+function renderOverview(){const o=S.ov;if(!o)return;
+  const chip=$("#modeChip");chip.textContent=(o.mode||"—").toUpperCase();chip.className="chip "+(o.mode||"");
+  renderPulse();
+  // alerts
+  const al=$("#alerts");al.textContent="";
+  if(o.killed)al.append(el("div",{class:"alert crit",role:"alert"},el("b",{},"⛔"),t("kill_alert")));
+  else if(o.stop_file)al.append(el("div",{class:"alert crit"},el("b",{},"■"),t("stop_alert")));
+  if(o.analyst&&o.analyst.active_regime!=="NORMAL")al.append(el("div",{class:"alert"},el("b",{},"🧠"),
+    `${t("ai_brake_alert")}: ${o.analyst.active_regime} — ${o.analyst.size_mult==="0"?t("brake_zero"):t("brake_half")} · ${t("until")} ${fmtTime(o.analyst.until)}`));
+  for(const a of ((o.ai&&o.ai.anomalies)||[]).slice(0,2))al.append(el("div",{class:"alert info"},el("b",{},"⚠"),`${t("anom")}: ${a}`));
+  // kpis
+  const px=parseFloat(o.price);const c1h=S.candles["1h"]||[];let ch24=null;if(c1h.length>24&&px){const p0=c1h[c1h.length-25][4];ch24=(px/p0-1)*100}
+  const pnlPct=o.start_equity?(o.equity/o.start_equity-1)*100:null;const dist=parseFloat(o.ema_dist_pct);
+  const k=$("#kpis");k.textContent="";
+  const kpi=(l,v,s,cls)=>el("div",{class:"card kpi"},el("div",{class:"l"},l),el("div",{class:"v"},v),el("div",{class:"s "+(cls||"")},s));
+  k.append(kpi(t("k_price"),px?fmt(px):"—",ch24==null?"—":`${fmtSigned(ch24)} % ${t("vs24")}`,ch24>0?"pos":ch24<0?"neg":""));
+  k.append(kpi(t("k_equity"),fmt(o.equity)+" $",pnlPct==null?"—":`${fmtSigned(pnlPct)} % · ${fmtSigned(o.equity-o.start_equity)} $`,pnlPct>0?"pos":pnlPct<0?"neg":""));
+  k.append(el("div",{class:"card kpi"},el("div",{class:"l"},t("k_regime")),el("div",{class:"v"},isNaN(dist)?"—":(dist>=0?"▲ ":"▼ ")+t(dist>=0?"regime_up":"regime_down")),
+    el("div",{class:"s "+(dist>=0?"pos":"neg")},isNaN(dist)?"—":`${fmtSigned(dist,1)} % ${t("vs_ema")}`)));
+  const an=o.analyst;const aiv=an?regimePill(an.active_regime):el("span",{class:"muted"},t("ai_nokey"));
+  k.append(el("div",{class:"card kpi"},el("div",{class:"l"},t("k_ai")),el("div",{class:"v",style:"font-size:16px;padding:4px 0"},aiv),
+    el("div",{class:"s"},an?(an.size_mult==="1"?t("no_brake"):an.size_mult==="0"?t("brake_zero"):t("brake_half")):"—")));
+  const nx=(o.calendar||[]).find(e=>e.ts>o.now);
+  k.append(kpi(t("k_event"),nx?nx.kind.toUpperCase():"—",nx?`${fmtTime(nx.ts)} · ${rel(nx.ts)}`:"—"));
+  renderAiMini();renderCal("#calMini",6);renderSleeves()}
+
+function renderAiMini(){const box=$("#aiMini");box.textContent="";const o=S.ov,ai=o&&o.ai;
+  box.append(el("h2",{},t("k_ai"),el("span",{class:"r"},ai?fmtTime(ai.ts):"")));
+  if(!ai){box.append(el("div",{class:"empty"},t("no_ai")));return}
+  box.append(el("div",{style:"display:flex;align-items:center;gap:10px;margin-bottom:8px"},regimePill(ai.news_regime),
+    el("div",{style:"flex:1"},el("div",{class:"meter"},el("i",{style:`width:${Math.round((ai.confidence||0)*100)}%`}))),
+    el("span",{class:"small muted"},`${t("confidence")} ${Math.round((ai.confidence||0)*100)} %`)));
+  const ul=el("div",{class:"grid",style:"gap:4px"});for(const f of (ai.facts||[]).slice(0,3))ul.append(el("div",{class:"fact small"},f));box.append(ul);
+  box.append(el("div",{class:"small muted",style:"margin-top:8px"},ai.mode==="auto"?t("mode_auto"):t("mode_shadow")));
+  box.append(el("button",{class:"btn ghost",style:"margin-top:8px;width:100%",onclick:()=>showTab("ai")},t("tab_ai")+" →"))}
+
+function renderCal(sel,n){const ul=$(sel);ul.textContent="";const o=S.ov;if(!o)return;
+  const evs=(o.calendar||[]).filter(e=>e.ts>o.now-6*3.6e6).slice(0,n);
+  if(!evs.length){ul.append(el("li",{class:"empty"},"—"));return}
+  for(const e of evs)ul.append(el("li",{},el("span",{class:"badge "+e.kind},e.kind.toUpperCase()),el("span",{},fmtTime(e.ts)),el("span",{class:"when"},rel(e.ts))))}
+
+function renderSleeves(){const box=$("#sleeves");box.textContent="";const o=S.ov;if(!o)return;
+  const px=parseFloat(o.price)||0;
+  for(const s of o.sleeves||[]){if(!s.sleeve)continue;
+    const usdt=(s.bots||[]).reduce((a,b)=>a+parseFloat(b.usdt||0),0),eth=(s.bots||[]).reduce((a,b)=>a+parseFloat(b.eth||0),0)*px,tot=usdt+eth||1;
+    const pnl=parseFloat(s.equity)-parseFloat(s.start_equity);const nm=(SLEEVE_NAMES[s.sleeve]||{})[LANG]||s.sleeve;
+    const gate=s.entry_gate==="відкрито"?t("open_gate"):s.entry_gate;
+    const card=el("div",{class:"sleeve card",style:"background:var(--surface-2)"},
+      el("div",{class:"top"},el("i",{style:`width:10px;height:10px;border-radius:3px;background:var(${SLEEVE_COLOR[s.sleeve]||"--s1"})`}),
+        el("span",{class:"name"},nm),el("span",{class:"spacer"}),el("b",{},fmt(parseFloat(s.equity))+" $"),
+        el("span",{class:"small "+(pnl>=0?"pos":"neg")},fmtSigned(pnl))),
+      el("div",{class:"alloc",title:`USDT ${fmt(usdt)} · ETH ${fmt(eth)}`},el("i",{style:`width:${usdt/tot*100}%;background:var(--s1)`}),el("i",{style:`width:${eth/tot*100}%;background:var(--s2)`})),
+      el("div",{class:"small muted",style:"display:flex;gap:10px;flex-wrap:wrap"},
+        el("span",{},`■ USDT ${fmt(usdt/tot*100,0)} %`),el("span",{style:"color:var(--s2)"},`■ ETH ${fmt(eth/tot*100,0)} %`),
+        el("span",{class:s.killed?"neg":""},s.killed?t("st_killed"):t("st_working")),el("span",{},`${t("entries")}: ${gate}`)));
+    const armedN=(s.bots||[]).filter(b=>b.armed).length,pendN=(s.bots||[]).filter(b=>String(b.phase).startsWith("PENDING")).length;
+    const tags=el("div",{style:"display:flex;gap:6px;flex-wrap:wrap"});
+    if(armedN)tags.append(el("span",{class:"tag armed blink"},`⚡ ${t("armed")} ×${armedN}`));
+    if(pendN)tags.append(el("span",{class:"tag pending blink"},`⏳ ${t("pending")} ×${pendN}`));
+    if(s.sleeve==="D"&&o.analyst&&o.analyst.running)tags.append(el("span",{class:"tag ai blink"},"🧠 "+t("ai_running")));
+    if(tags.childNodes.length)card.append(tags);
+    const longs=(s.bots||[]).filter(b=>b.phase!=="FLAT");
+    for(const b of longs)card.append(el("div",{class:"small"},`#${b.id} ${b.phase} · ${t("entry")} ${b.entry} · ${t("stop")} ${b.stop||"—"}${b.take?` · ${t("take")} ${b.take}`:""}`));
+    box.append(card)}}
+
+// ---------- price chart ----------
+function chartFrame(host,h){host.textContent="";const W=host.clientWidth||600,H=h||host.clientHeight||300;
+  const svg=sv("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});host.append(svg);const tip=el("div",{class:"tip"});host.append(tip);return {svg,tip,W,H}}
+function placeTip(host,tip,x,y){tip.style.display="block";const r=host.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight;
+  let lx=x+14,ly=y-h-10;if(lx+w>r.width)lx=x-w-14;if(ly<0)ly=y+14;tip.style.left=Math.max(0,lx)+"px";tip.style.top=Math.max(0,ly)+"px"}
+function tipRows(tip,title,rows){tip.textContent="";tip.append(el("div",{class:"t"},title));
+  for(const [k,v,col] of rows)tip.append(el("div",{class:"row"},el("span",{},col?el("i",{style:`display:inline-block;width:10px;height:2px;background:${col};margin-right:6px;vertical-align:middle`}):null,k),el("b",{},v)))}
+
+function drawPrice(){const host=$("#priceChart");if(!host.offsetParent)return;
+  const tf={"24h":"1m","7d":"1h","30d":"1h","1y":"1d"}[S.range];let c=S.candles[tf]||[];
+  const {svg,tip,W,H}=chartFrame(host,340);
+  if(!c.length){svg.append(sv("text",{x:W/2,y:H/2,"text-anchor":"middle",fill:css("--muted"),"font-size":13},t("nodata")));return}
+  const n={"24h":1440,"7d":168,"30d":720,"1y":365}[S.range];c=c.slice(-n);c=aggregate(c,{"24h":5,"7d":1,"30d":4,"1y":1}[S.range]);
+  const d1=S.candles["1d"]||[];const closes=d1.map(x=>x[4]);const e200=ema(closes,200),e50=ema(closes,50);
+  const dayVal=(arr,ts)=>{let v=null;for(let i=0;i<d1.length&&d1[i][0]+864e5<=ts;i++)v=arr[i];return v};// лише закриті дні
+  const t0=c[0][0],t1=c[c.length-1][0];const step=c.length>1?(c[1][0]-c[0][0]):36e5;
+  const o=S.ov||{};const sleeves=o.sleeves||[];
+  // діапазон цін
+  let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
+  const levels=[];
+  if(S.overlays.pos||S.overlays.levels)for(const s of sleeves)for(const b of s.bots||[]){
+    if(S.overlays.pos&&b.phase!=="FLAT"){if(b.entry)levels.push({p:+b.entry,kind:"entry",s,b});if(b.stop)levels.push({p:+b.stop,kind:"stop",s,b});if(b.take)levels.push({p:+b.take,kind:"take",s,b})}
+    else if(S.overlays.levels&&b.phase==="FLAT"&&b.level)levels.push({p:+b.level,kind:"level",s,b})}
+  const near=levels.filter(L=>L.p>lo*0.85&&L.p<hi*1.15);for(const L of near){lo=Math.min(lo,L.p);hi=Math.max(hi,L.p)}
+  const e200v=S.overlays.ema200?c.map(x=>dayVal(e200,x[0])):[];const e50v=S.overlays.ema50?c.map(x=>dayVal(e50,x[0])):[];
+  for(const v of [...e200v,...e50v])if(v&&v>lo*0.8&&v<hi*1.2){lo=Math.min(lo,v);hi=Math.max(hi,v)}
+  const pad=(hi-lo)*0.06||1;lo-=pad;hi+=pad;
+  const M={l:8,r:58,t:22,b:24},pw=W-M.l-M.r,ph=H-M.t-M.b;
+  const X=ts=>M.l+(ts-t0+step/2)/((t1-t0)+step)*pw,Y=p=>M.t+(hi-p)/(hi-lo)*ph;const cw=Math.max(1,pw/c.length*0.62);
+  const g=sv("g");svg.append(g);
+  // зона режиму (фон): вище/нижче EMA200 денних
+  if(S.overlays.regime&&d1.length>200){let start=null,state=null;const segs=[];
+    c.forEach((x,i)=>{const v=dayVal(e200,x[0]);const st=v==null?null:(x[4]>=v?"up":"down");if(st!==state){if(state)segs.push([start,i-1,state]);start=i;state=st}});if(state)segs.push([start,c.length-1,state]);
+    for(const [a,b,st] of segs)if(st)g.append(sv("rect",{x:X(c[a][0])-pw/c.length/2,y:M.t,width:(b-a+1)*pw/c.length,height:ph,fill:css(st==="up"?"--zone-up":"--zone-down")}))}
+  // сітка й вісь Y
+  for(const v of niceTicks(lo,hi,5)){g.append(sv("line",{x1:M.l,x2:W-M.r,y1:Y(v),y2:Y(v),stroke:css("--grid"),"stroke-width":1}));
+    g.append(sv("text",{x:W-M.r+6,y:Y(v)+4,fill:css("--muted"),"font-size":11,"font-variant-numeric":"tabular-nums"},fmt(v,v>=1000?0:2)))}
+  // вісь X
+  const xt=Math.max(2,Math.floor(pw/90));for(let i=0;i<xt;i++){const idx=Math.round(i*(c.length-1)/(xt-1));const ts=c[idx][0];
+    g.append(sv("text",{x:X(ts),y:H-6,fill:css("--muted"),"font-size":11,"text-anchor":i===0?"start":i===xt-1?"end":"middle"},
+      S.range==="24h"?fmtTime(ts,false):new Date(ts).toLocaleDateString(LANG==="uk"?"uk-UA":"en-GB",{day:"2-digit",month:"2-digit"})))}
+  // події FOMC/CPI
+  if(S.overlays.events)for(const e of (o.calendar||[]))if(e.ts>=t0&&e.ts<=t1+step){const x=X(e.ts);
+    g.append(sv("line",{x1:x,x2:x,y1:M.t,y2:M.t+ph,stroke:css("--s5"),"stroke-width":1,"stroke-dasharray":"3 4",opacity:.8}));
+    g.append(sv("text",{x:x+3,y:M.t+10,fill:css("--s5"),"font-size":10,"font-weight":700},e.kind.toUpperCase()))}
+  // зони позицій: стоп (вхід→стоп) і тейк
+  if(S.overlays.pos)for(const s of sleeves)for(const b of s.bots||[])if(b.phase!=="FLAT"&&b.entry){
+    const xa=b.entry_ts&&b.entry_ts>t0?X(b.entry_ts):M.l,xb=W-M.r;
+    if(b.stop)g.append(sv("rect",{x:xa,y:Y(+b.entry),width:xb-xa,height:Math.max(1,Y(+b.stop)-Y(+b.entry)),fill:css("--zone-stop")}));
+    if(b.take)g.append(sv("rect",{x:xa,y:Y(+b.take),width:xb-xa,height:Math.max(1,Y(+b.entry)-Y(+b.take)),fill:css("--zone-take")}))}
+  // EMA
+  const line=(vals,col,dash)=>{let d="";vals.forEach((v,i)=>{if(v==null)return;d+=(d?"L":"M")+X(c[i][0]).toFixed(1)+","+Y(v).toFixed(1)});
+    if(d)g.append(sv("path",{d,fill:"none",stroke:col,"stroke-width":2,"stroke-dasharray":dash||null,"stroke-linejoin":"round"}))};
+  if(S.overlays.ema200)line(e200v,css("--s1"));if(S.overlays.ema50)line(e50v,css("--s7"),"5 4");
+  // свічки: зростання — порожнисті, падіння — заповнені (друге кодування, не лише колір)
+  const up=css("--up"),dn=css("--down"),surf=css("--surface");
+  for(const x of c){const cx=X(x[0]),isUp=x[4]>=x[1],col=isUp?up:dn;
+    g.append(sv("line",{x1:cx,x2:cx,y1:Y(x[2]),y2:Y(x[3]),stroke:col,"stroke-width":1}));
+    const y1=Y(Math.max(x[1],x[4])),hgt=Math.max(1,Math.abs(Y(x[1])-Y(x[4])));
+    g.append(sv("rect",{x:cx-cw/2,y:y1,width:cw,height:hgt,fill:isUp?surf:col,stroke:col,"stroke-width":cw>3?1.2:0,rx:cw>6?1.5:0}))}
+  // рівні з підписами праворуч
+  const lab=[];
+  for(const L of levels){if(L.p<lo||L.p>hi)continue;const y=Y(L.p);
+    const col=L.kind==="stop"?dn:L.kind==="take"?up:L.kind==="entry"?css("--ink-2"):css("--s4");
+    g.append(sv("line",{x1:M.l,x2:W-M.r,y1:y,y2:y,stroke:col,"stroke-width":L.kind==="entry"?1.5:1,"stroke-dasharray":L.kind==="level"?"2 4":L.kind==="entry"?null:"6 4",opacity:L.kind==="level"?.75:1}));
+    lab.push({y,txt:`${L.s.sleeve}${L.kind==="level"?"#"+L.b.id:""} ${t(L.kind)}`,col,p:L.p})}
+  lab.sort((a,b)=>a.y-b.y);let lastY=-99;for(const L of lab){const y=Math.max(L.y,lastY+13);lastY=y;
+    g.append(sv("text",{x:W-M.r-4,y:y-3,fill:L.col,"font-size":10,"text-anchor":"end","font-weight":600},L.txt))}
+  // поточна ціна
+  const pxNow=parseFloat(o.price);if(pxNow&&pxNow>lo&&pxNow<hi){const y=Y(pxNow);
+    g.append(sv("line",{x1:M.l,x2:W-M.r,y1:y,y2:y,stroke:css("--accent"),"stroke-width":1,opacity:.6}));
+    g.append(sv("rect",{x:W-M.r+1,y:y-9,width:M.r-2,height:18,rx:5,fill:css("--accent")}));
+    g.append(sv("text",{x:W-M.r+5,y:y+4,fill:"#fff","font-size":11,"font-weight":700},fmt(pxNow,pxNow>=1000?0:2)))}
+  // мітки угод (▲ купівля, ▼ продаж; колір продажу = результат) + маркери ШІ
+  const hits=[];
+  if(S.overlays.trades){const tri=(x,y,upw,col,ring)=>{const s=6;const d=upw?`M${x},${y-s}L${x+s},${y+s}L${x-s},${y+s}Z`:`M${x},${y+s}L${x+s},${y-s}L${x-s},${y-s}Z`;
+      g.append(sv("path",{d,fill:col,stroke:ring,"stroke-width":2,"stroke-linejoin":"round"}))};
+    for(const tr of S.trades){const inR=tr.entry_ts>=t0&&tr.entry_ts<=t1+step,outR=tr.exit_ts>=t0&&tr.exit_ts<=t1+step;if(!inR&&!outR)continue;
+      const col=tr.pnl>=0?up:dn;
+      if(inR&&outR)g.append(sv("line",{x1:X(tr.entry_ts),y1:Y(tr.entry_px),x2:X(tr.exit_ts),y2:Y(tr.exit_px),stroke:col,"stroke-width":1,"stroke-dasharray":"2 3",opacity:.8}));
+      if(inR){tri(X(tr.entry_ts),Y(tr.entry_px)+9,true,css("--s1"),surf);hits.push({x:X(tr.entry_ts),y:Y(tr.entry_px)+9,tr,side:"buy"})}
+      if(outR){tri(X(tr.exit_ts),Y(tr.exit_px)-9,false,col,surf);hits.push({x:X(tr.exit_ts),y:Y(tr.exit_px)-9,tr,side:"sell"})}}
+    for(const s of sleeves)for(const b of s.bots||[])if(b.phase!=="FLAT"&&b.entry_ts>=t0){const x=X(b.entry_ts),y=Y(+b.entry)+9;tri(x,y,true,css("--s1"),surf);
+      hits.push({x,y,open:{s,b},side:"buy"})}}
+  if(S.overlays.ai)for(const a of S.ai){if(a.ts<t0||a.ts>t1+step)continue;const x=X(a.ts),y=M.t-10,col=css(a.news_regime==="NORMAL"?"--good":a.news_regime==="CAUTION"?"--warn":"--crit");
+    g.append(sv("path",{d:`M${x},${y-5}L${x+5},${y}L${x},${y+5}L${x-5},${y}Z`,fill:col,stroke:surf,"stroke-width":1.5}));hits.push({x,y,ai:a})}
+  // інтерактив: перехрестя + підказки
+  const cross=sv("line",{y1:M.t,y2:M.t+ph,stroke:css("--muted"),"stroke-width":1,"stroke-dasharray":"3 3",opacity:0});svg.append(cross);
+  const hl=sv("line",{x1:M.l,x2:W-M.r,stroke:css("--muted"),"stroke-width":1,"stroke-dasharray":"3 3",opacity:0});svg.append(hl);
+  const move=ev=>{const r=svg.getBoundingClientRect(),sx=W/r.width,mx=(ev.clientX-r.left)*sx,my=(ev.clientY-r.top)*sx;
+    if(mx<M.l||mx>W-M.r){tip.style.display="none";cross.setAttribute("opacity",0);hl.setAttribute("opacity",0);return}
+    const hit=hits.reduce((b,h)=>{const d=Math.hypot(h.x-mx,h.y-my);return d<14&&(!b||d<b.d)?{...h,d}:b},null);
+    if(hit){cross.setAttribute("opacity",0);hl.setAttribute("opacity",0);
+      if(hit.ai)tipRows(tip,"🧠 "+fmtTime(hit.ai.ts),[[t("k_ai"),hit.ai.news_regime],[t("confidence"),Math.round(hit.ai.confidence*100)+" %"],[t("price_now"),hit.ai.price||"—"]].concat((hit.ai.facts||[]).slice(0,2).map(f=>["•",f.slice(0,60)])));
+      else if(hit.open)tipRows(tip,`${hit.open.s.sleeve} #${hit.open.b.id} · ${t("open")}`,[[t("entry"),hit.open.b.entry],[t("stop"),hit.open.b.stop||"—"],["ETH",hit.open.b.eth]]);
+      else{const tr=hit.tr;tipRows(tip,`${tr.sleeve||""} #${tr.bot} · ${t(hit.side)} · ${fmtTime(hit.side==="buy"?tr.entry_ts:tr.exit_ts)}`,
+        [[t("entry"),fmt(tr.entry_px)],[t("t_out"),fmt(tr.exit_px)],[t("pnl"),fmtSigned(tr.pnl)+" $"],[t("t_reason"),tr.reason]])}
+      placeTip(host,tip,hit.x/sx,hit.y/sx);return}
+    const i=Math.max(0,Math.min(c.length-1,Math.round((mx-M.l)/pw*c.length-0.5)));const x=c[i];const cx=X(x[0]);
+    cross.setAttribute("x1",cx);cross.setAttribute("x2",cx);cross.setAttribute("opacity",.8);hl.setAttribute("y1",my);hl.setAttribute("y2",my);hl.setAttribute("opacity",.6);
+    const rows=[[t("o"),fmt(x[1])],[t("h"),fmt(x[2])],[t("l"),fmt(x[3])],[t("c"),fmt(x[4])],["Δ",fmtSigned((x[4]/x[1]-1)*100)+" %"]];
+    if(S.overlays.ema200&&e200v[i])rows.push(["EMA200",fmt(e200v[i]),css("--s1")]);if(S.overlays.ema50&&e50v[i])rows.push(["EMA50",fmt(e50v[i]),css("--s7")]);
+    tipRows(tip,S.range==="1y"?new Date(x[0]).toLocaleDateString(LANG==="uk"?"uk-UA":"en-GB"):fmtTime(x[0]),rows);placeTip(host,tip,cx/sx,my/sx)};
+  svg.addEventListener("pointermove",move);svg.addEventListener("pointerdown",move);
+  svg.addEventListener("pointerleave",()=>{tip.style.display="none";cross.setAttribute("opacity",0);hl.setAttribute("opacity",0)})}
+
+// ---------- equity chart ----------
+function lineChart(host,h,series,opts){const {svg,tip,W,H}=chartFrame(host,h);opts=opts||{};
+  const all=series.flatMap(s=>s.pts);if(all.length<2){svg.append(sv("text",{x:W/2,y:H/2,"text-anchor":"middle",fill:css("--muted"),"font-size":13},t("nodata")));return}
+  const t0=Math.min(...all.map(p=>p[0])),t1=Math.max(...all.map(p=>p[0]));let lo=Math.min(...all.map(p=>p[1])),hi=Math.max(...all.map(p=>p[1]));
+  if(opts.base!=null){lo=Math.min(lo,opts.base);hi=Math.max(hi,opts.base)}const pad=(hi-lo)*.08||1;lo-=pad;hi+=pad;
+  const M={l:8,r:58,t:12,b:24},pw=W-M.l-M.r,ph=H-M.t-M.b,X=ts=>M.l+(ts-t0)/((t1-t0)||1)*pw,Y=v=>M.t+(hi-v)/(hi-lo)*ph;
+  for(const v of niceTicks(lo,hi,4)){svg.append(sv("line",{x1:M.l,x2:W-M.r,y1:Y(v),y2:Y(v),stroke:css("--grid")}));
+    svg.append(sv("text",{x:W-M.r+6,y:Y(v)+4,fill:css("--muted"),"font-size":11},fmt(v,opts.dec??1)))}
+  if(opts.base!=null)svg.append(sv("line",{x1:M.l,x2:W-M.r,y1:Y(opts.base),y2:Y(opts.base),stroke:css("--axis"),"stroke-width":1.5}));
+  for(const [i,ts] of [[0,t0],[1,t1]])svg.append(sv("text",{x:X(ts),y:H-6,fill:css("--muted"),"font-size":11,"text-anchor":i?"end":"start"},new Date(ts).toLocaleDateString(LANG==="uk"?"uk-UA":"en-GB",{day:"2-digit",month:"2-digit"})));
+  for(const s of series){if(s.pts.length<2)continue;const d=s.pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+","+Y(p[1]).toFixed(1)).join("");
+    svg.append(sv("path",{d,fill:"none",stroke:s.color,"stroke-width":2,"stroke-linejoin":"round"}));
+    const lp=s.pts[s.pts.length-1];svg.append(sv("circle",{cx:X(lp[0]),cy:Y(lp[1]),r:4,fill:s.color,stroke:css("--surface"),"stroke-width":2}));
+    if(s.dots)for(const dd of s.dots)svg.append(sv("circle",{cx:X(dd[0]),cy:Y(dd[1]),r:5,fill:dd[2],stroke:css("--surface"),"stroke-width":2}))}
+  const cross=sv("line",{y1:M.t,y2:M.t+ph,stroke:css("--muted"),"stroke-dasharray":"3 3",opacity:0});svg.append(cross);
+  const mv=ev=>{const r=svg.getBoundingClientRect(),sx=W/r.width,mx=(ev.clientX-r.left)*sx;if(mx<M.l||mx>W-M.r){tip.style.display="none";return}
+    const ts=t0+(mx-M.l)/pw*(t1-t0);const rows=[];let title=null,cx=mx;
+    for(const s of series){if(!s.pts.length)continue;const p=s.pts.reduce((b,q)=>Math.abs(q[0]-ts)<Math.abs(b[0]-ts)?q:b);title=title||fmtTime(p[0]);cx=X(p[0]);rows.push([s.name,fmt(p[1],opts.dec??1)+(opts.unit||""),s.color])}
+    if(opts.extraTip){const ex=opts.extraTip(ts);if(ex)rows.push(...ex)}
+    cross.setAttribute("x1",cx);cross.setAttribute("x2",cx);cross.setAttribute("opacity",.8);tipRows(tip,title,rows);placeTip(host,tip,cx/sx,(ev.clientY-r.top))};
+  svg.addEventListener("pointermove",mv);svg.addEventListener("pointerdown",mv);svg.addEventListener("pointerleave",()=>{tip.style.display="none";cross.setAttribute("opacity",0)})}
+
+function drawEquity(){const host=$("#equityChart");if(!host.offsetParent)return;const e=S.equity||[];
+  const pts=e.map(r=>[r[0],r[1]]),px=e.map(r=>[r[0],r[2]]);
+  const idx=a=>a.length?a.map(p=>[p[0],p[1]/a[0][1]*100]):[];
+  const series=[{name:t("portfolio"),color:css("--s1"),pts:idx(pts)},{name:t("hold_eth"),color:css("--s2"),pts:idx(px)}];
+  lineChart(host,220,series,{base:100,dec:1});
+  const lg=$("#equityLegend");lg.textContent="";for(const s of series){const last=s.pts.length?s.pts[s.pts.length-1][1]:null;
+    lg.append(el("span",{},el("i",{style:`background:${s.color}`}),`${s.name} ${last==null?"":fmtSigned(last-100,1)+" %"}`))}}
+
+// ---------- AI tab ----------
+async function loadAiTab(){await Promise.all([loadSide(),api("/api/news").then(n=>S.news=n).catch(()=>{})]);if(!S.candles["1h"])await loadCandles();renderAiFull();renderExpect();renderCal("#calFull",14);renderNews();drawAiChart()}
+function renderAiFull(){const box=$("#aiFull");box.textContent="";const o=S.ov||{},ai=o.ai,an=o.analyst;
+  box.append(el("h2",{},t("k_ai"),el("span",{class:"r"},an?`${an.model} · ${an.mode==="auto"?t("mode_auto"):t("mode_shadow")}`:t("ai_nokey"))));
+  if(!ai){box.append(el("div",{class:"empty"},t("no_ai")));return}
+  box.append(el("div",{style:"display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"},regimePill(ai.news_regime),
+    el("span",{class:"small muted"},`${fmtTime(ai.ts)} · ${t("price_now")} ${ai.price||"—"}${ai.trigger?" · "+ai.trigger:""}`),
+    el("span",{class:"small"},`${t("confidence")} ${Math.round((ai.confidence||0)*100)} %`)));
+  if(an&&an.next_run)box.append(el("div",{class:"small muted",style:"margin-bottom:10px"},`${t("next_run")}: ${fmtTime(an.next_run)} (${rel(an.next_run)})`));
+  const sec=(title,node)=>el("div",{style:"margin-top:12px"},el("div",{class:"small muted",style:"margin-bottom:6px;font-weight:600"},title),node);
+  box.append(sec(t("facts"),el("div",{class:"grid",style:"gap:6px"},(ai.facts||[]).map(f=>el("div",{class:"fact"},f)))));
+  if((ai.events_ahead||[]).length)box.append(sec(t("events_ahead"),el("dl",{class:"kv"},(ai.events_ahead||[]).flatMap(e=>[el("dt",{},e.when||""),el("dd",{},e.what||"")]))));
+  if(ai.impact_on_strategy)box.append(sec(t("impact"),el("div",{},ai.impact_on_strategy)));
+  if(ai.positions_review)box.append(sec(t("positions_review"),el("div",{},ai.positions_review)));
+  if((ai.anomalies||[]).length)box.append(sec(t("anomalies"),el("div",{class:"grid",style:"gap:6px"},ai.anomalies.map(a=>el("div",{class:"anom"},a)))));
+  const tr=ai.trade;if(tr&&tr.proposal){const p=tr.proposal;
+    box.append(sec(t("proposal"),el("div",{class:"proposal"},
+      el("div",{},el("b",{},p.action+(p.setup?` · ${p.setup}`:"")+(p.reason?` · ${p.reason}`:"")+(p.size_pct?` · ${p.size_pct} %`:"")+(p.stop_pct?` · stop −${p.stop_pct} %`:"")),
+        " ",el("span",{class:tr.approved?"pos":"neg"},tr.approved?"✓ "+t("approved"):`✗ ${t("rejected")} (${t("stage")}: ${tr.stage||"—"})`)),
+      p.thesis?el("div",{class:"small"},`${t("thesis")}: ${p.thesis}`):null,
+      p.invalidation?el("div",{class:"small muted"},`${t("invalidation")}: ${p.invalidation}`):null,
+      tr.why?el("div",{class:"small neg"},tr.why):null,
+      (tr.critic||[]).length?el("div",{class:"small muted"},`${t("critic")}: ${tr.critic.join("; ")}`):null)))}}
+
+function renderExpect(){const box=$("#expect");box.textContent="";const rows=[["поточний",1.1,2.1],["обережний",2.5,7.7],["збалансований",21.8,50],["агресивний",28.6,56.2],["лише_режим",39.3,65.9]];
+  const cur=(S.settings&&S.settings.values["portfolio.preset"])||"";const max=70;
+  const tbl=el("table",{class:"tbl"},el("tr",{},el("th",{},""),el("th",{},t("cagr")),el("th",{},t("maxdd"))));
+  for(const [k,c,d] of rows){const isCur=cur.replace("+ші","")===k;
+    tbl.append(el("tr",{},el("td",{},isCur?el("b",{},k+" ●"):k),
+      el("td",{},el("div",{style:"display:flex;align-items:center;gap:6px"},el("i",{style:`display:block;height:8px;width:${c/max*90}px;background:var(--s1);border-radius:0 4px 4px 0`}),fmt(c,1)+" %")),
+      el("td",{},el("div",{style:"display:flex;align-items:center;gap:6px"},el("i",{style:`display:block;height:8px;width:${d/max*90}px;background:var(--s2);border-radius:0 4px 4px 0`}),fmt(d,1)+" %"))))}
+  box.append(tbl,el("div",{class:"small muted",style:"margin-top:8px"},LANG==="uk"?"2019–2026, з комісіями. Минуле не гарантує майбутнього.":"2019–2026, fees included. Past results do not guarantee the future."))}
+
+function renderNews(){const ul=$("#news");ul.textContent="";const n=S.news;
+  $("#newsAt").textContent=n&&n.at?`${t("updated")} ${fmtTime(n.at)}`:"";
+  if(!n||!n.items.length){ul.append(el("li",{class:"empty"},t("news_empty")));setTimeout(()=>{if((store("tab")||"ov")==="ai")api("/api/news").then(x=>{S.news=x;renderNews()})},5000);return}
+  for(const h of n.items)ul.append(el("li",{},el("div",{class:"src"},`${h.source} · ${h.ts?fmtTime(h.ts):""}`),el("div",{style:"font-weight:550"},h.title),
+    h.summary?el("div",{class:"small muted"},h.summary.slice(0,220)):null))}
+
+function drawAiChart(){const host=$("#aiChart");if(!host.offsetParent)return;const c=(S.candles["1h"]||[]).slice(-24*30);
+  const col=r=>css(r==="NORMAL"?"--good":r==="CAUTION"?"--warn":"--crit");
+  const dots=S.ai.filter(a=>a.price&&c.length&&a.ts>=c[0][0]).map(a=>[a.ts,parseFloat(a.price),col(a.news_regime)]);
+  lineChart(host,220,[{name:"ETH",color:css("--ink-2"),pts:c.map(x=>[x[0],x[4]]),dots}],{dec:0,unit:" $",
+    extraTip:ts=>{const a=S.ai.reduce((b,q)=>Math.abs(q.ts-ts)<Math.abs((b?b.ts:1e18)-ts)?q:b,null);return a&&Math.abs(a.ts-ts)<6*3.6e6?[["🧠",a.news_regime,col(a.news_regime)]]:null}});
+  const lg=$("#aiLegend");lg.textContent="";for(const r of ["NORMAL","CAUTION","RISK_OFF"])lg.append(el("span",{},el("i",{style:`background:${col(r)};width:10px;height:10px;border-radius:50%`}),r))}
+
+// ---------- trades tab ----------
+async function loadTrades(){await loadSide();try{S.events=await api("/api/events")}catch(e){}renderTrades();renderEvents();drawPnl()}
+function renderTrades(){const tr=S.trades||[];const st=$("#tradeStats");st.textContent="";
+  const wins=tr.filter(x=>x.pnl>0),loss=tr.filter(x=>x.pnl<0);const gw=wins.reduce((a,x)=>a+x.pnl,0),gl=-loss.reduce((a,x)=>a+x.pnl,0),sum=gw-gl;
+  const kpi=(l,v,cls)=>el("div",{class:"card kpi"},el("div",{class:"l"},l),el("div",{class:"v "+(cls||"")},v));
+  st.append(kpi(t("t_count"),tr.length),kpi(t("t_win"),tr.length?fmt(wins.length/tr.length*100,0)+" %":"—"),kpi(t("t_pf"),gl>0?fmt(gw/gl):"—"),kpi(t("t_pnl"),fmtSigned(sum)+" $",sum>0?"pos":sum<0?"neg":""));
+  const tb=$("#tradesTbl");tb.textContent="";tb.append(el("tr",{},[t("t_time"),t("t_sleeve"),t("t_bot"),t("t_in"),t("t_out"),t("t_qty"),t("pnl"),t("t_reason")].map(h=>el("th",{},h))));
+  if(!tr.length){tb.append(el("tr",{},el("td",{colspan:8,class:"empty"},t("nodata"))));return}
+  for(const x of tr)tb.append(el("tr",{},el("td",{},fmtTime(x.exit_ts)),el("td",{},x.sleeve||"—"),el("td",{},"#"+x.bot),el("td",{},fmt(x.entry_px)),el("td",{},fmt(x.exit_px)),
+    el("td",{},fmt(x.qty,4)),el("td",{class:x.pnl>=0?"pos":"neg"},fmtSigned(x.pnl)),el("td",{},x.reason)))}
+function drawPnl(){const host=$("#pnlChart");if(!host.offsetParent)return;const tr=[...(S.trades||[])].reverse();const {svg,tip,W,H}=chartFrame(host,200);
+  if(!tr.length){svg.append(sv("text",{x:W/2,y:H/2,"text-anchor":"middle",fill:css("--muted"),"font-size":13},t("nodata")));return}
+  const M={l:8,r:52,t:10,b:10},pw=W-M.l-M.r,ph=H-M.t-M.b;const mx=Math.max(...tr.map(x=>Math.abs(x.pnl)))||1;const Y=v=>M.t+ph/2-v/mx*ph/2;
+  svg.append(sv("line",{x1:M.l,x2:W-M.r,y1:Y(0),y2:Y(0),stroke:css("--axis"),"stroke-width":1.5}));
+  for(const v of [mx,-mx])svg.append(sv("text",{x:W-M.r+6,y:Y(v)+4,fill:css("--muted"),"font-size":11},fmtSigned(v)));
+  const bw=pw/tr.length;tr.forEach((x,i)=>{const y0=Y(0),y1=Y(x.pnl),h=Math.max(1,Math.abs(y1-y0));
+    const r=sv("rect",{x:M.l+i*bw+1,y:Math.min(y0,y1),width:Math.max(1,bw-2),height:h,rx:Math.min(4,bw/3),fill:css(x.pnl>=0?"--up":"--down")});svg.append(r);
+    const hit=sv("rect",{x:M.l+i*bw,y:M.t,width:bw,height:ph,fill:"transparent"});svg.append(hit);
+    const show=ev=>{const rr=svg.getBoundingClientRect();tipRows(tip,`${x.sleeve||""} #${x.bot} · ${fmtTime(x.exit_ts)}`,[[t("pnl"),fmtSigned(x.pnl)+" $"],[t("t_reason"),x.reason],[t("t_in"),fmt(x.entry_px)],[t("t_out"),fmt(x.exit_px)]]);
+      placeTip(host,tip,ev.clientX-rr.left,ev.clientY-rr.top)};hit.addEventListener("pointermove",show);hit.addEventListener("pointerdown",show)});
+  svg.addEventListener("pointerleave",()=>tip.style.display="none")}
+function renderEvents(){const tb=$("#eventsTbl");tb.textContent="";tb.append(el("tr",{},el("th",{},t("ev_time")),el("th",{},t("ev_msg"))));
+  const evs=(S.events||[]).filter(e=>!S.lvl||(S.lvl==="ai"?e.kind.startsWith("ai"):e.level===S.lvl||e.level==="ERROR"));
+  for(const e of evs)tb.append(el("tr",{},el("td",{class:"muted"},fmtTime(e.ts)),el("td",{class:"wrap lvl-"+e.level},e.msg)))}
+document.querySelectorAll("#lvlSeg button").forEach(b=>b.addEventListener("click",()=>{S.lvl=b.dataset.l;document.querySelectorAll("#lvlSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderEvents()}));
+
+// ---------- settings ----------
+async function loadSettings(){try{S.settings=await api("/api/settings")}catch(e){return}renderSettings()}
+function renderSettings(){const box=$("#settings");box.textContent="";const st=S.settings;if(!st)return;const pending={},secrets={};
+  const sections=[["general","s_general"],["portfolio","s_portfolio"],["keys","s_keys"],["ai","s_ai"],["ai_trader","s_ai_trader"],["strategy","s_strategy"],["risk","s_risk"]];
+  const msg=el("span",{class:"msg"});
+  for(const [sec,lab] of sections){const card=el("div",{class:"card form"},el("h2",{},t(lab)));
+    if(sec==="keys"){card.append(el("div",{class:"small muted"},t("keys_help")));
+      const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null]];
+      for(const [k,l,chk] of keys){const cur=st.secrets[k];const out=el("div",{class:"h"});
+        const inp=el("input",{type:k==="TELEGRAM_CHAT_ID"?"text":"password",placeholder:cur?`${t("key_set")} ${cur} — ${t("key_ph")}`:t("key_ph"),autocomplete:"off",oninput:e=>{secrets[k]=e.target.value}});
+        const row=el("div",{class:"keyrow"},inp,chk?el("button",{class:"btn",onclick:async()=>{out.textContent="…";const r=await post("/api/check/"+chk).catch(()=>({ok:false,msg:"?"}));out.textContent=(r.ok?"✓ ":"✗ ")+r.msg;out.className="h msg "+(r.ok?"ok":"err")}},t("check")):null);
+        card.append(el("div",{class:"field"},el("label",{},t(l),el("div",{class:"small "+(cur?"pos":"muted")},cur?`● ${t("key_set")} ${cur}`:`○ ${t("key_none")}`)),row,out))}
+      box.append(card);continue}
+    for(const f of st.schema.filter(x=>x.section===sec)){const v=st.values[f.key];let input;const warn=el("div",{class:"w"});const hint=el("div",{class:"h"},f.help[LANG]||f.help.uk||"");
+      const setWarn=val=>{warn.textContent=f.warn_above!=null&&parseFloat(val)>f.warn_above?"⚠ "+t("warn_above",{v:f.warn_above}):""};
+      if(f.type==="bool"){input=el("label",{class:"switch"},el("input",{type:"checkbox",checked:!!v,onchange:e=>pending[f.key]=e.target.checked}),el("span"))}
+      else if(f.type==="select"){input=el("select",{onchange:e=>{pending[f.key]=e.target.value;if(f.key==="portfolio.preset")presetHint(e.target.value)}},f.options.map(o=>el("option",{value:o,selected:o===v},o)))}
+      else{input=el("input",{type:"number",min:f.min,max:f.max,step:f.step||"any",value:v??"",inputmode:"decimal",oninput:e=>{pending[f.key]=e.target.value;setWarn(e.target.value)}});setWarn(v)}
+      const presetHint=val=>{if(f.key!=="portfolio.preset")return;const p=st.presets[val];if(!p)return;const base=st.presets[val.replace("+ші","")];
+        const ex=(p.expect||(base&&base.expect));hint.textContent=Object.entries(p.weights).map(([s,w])=>`${Math.round(w*100)} % ${s}`).join(" + ")+" · "+
+          (ex?t("preset_hint",{c:fmt(ex[0],1),d:fmt(ex[1],1)}):"")+(val.includes("+ші")?" · "+t("preset_ai"):"")};
+      card.append(el("div",{class:"field"},el("label",{for:f.key},f.label[LANG]||f.label.uk),input,hint,warn));if(f.key==="portfolio.preset")presetHint(v)}
+    box.append(card)}
+  // керування
+  const ctl=el("div",{class:"card form"},el("h2",{},t("s_control")),
+    el("div",{style:"display:flex;gap:8px;flex-wrap:wrap"},
+      el("button",{class:"btn",onclick:async()=>{if(confirm(t("confirm_stop"))){await post("/api/stop");loadOverview()}}},t("stop_btn")),
+      el("button",{class:"btn danger",onclick:async()=>{if(confirm(t("confirm_flat"))){await post("/api/flatten");loadOverview()}}},t("flat_btn")),
+      el("button",{class:"btn ghost",onclick:async()=>{if(confirm(t("confirm_clear"))){await post("/api/clear_kill");loadOverview()}}},t("clear_btn"))),
+    el("div",{class:"small muted"},el("a",{href:"/lite",style:"color:var(--ink-2)"},t("lite")),` · config: ${st.config_path} · overrides: ${st.overrides}`));
+  box.append(ctl);
+  const save=el("div",{class:"save"},msg,
+    el("button",{class:"btn primary",onclick:async()=>{msg.textContent="…";msg.className="msg";
+      const r=await post("/api/settings",{values:pending,secrets}).catch(()=>({ok:false,errors:["network"]}));
+      if(r.ok){msg.textContent=t("saved");msg.className="msg ok";for(const k of Object.keys(pending))delete pending[k];for(const k of Object.keys(secrets))delete secrets[k];S.settings=await api("/api/settings")}
+      else{msg.textContent=t("errs")+": "+(r.errors||[]).join("; ");msg.className="msg err"}}},t("save")),
+    el("button",{class:"btn",onclick:async()=>{await post("/api/restart");msg.textContent=t("restarting");msg.className="msg ok";setTimeout(()=>location.reload(),15000)}},t("restart")));
+  box.append(save)}
+
+// ---------- start ----------
+applyI18n();buildOverlayToggles();
+(async()=>{await Promise.all([loadOverview(),loadCandles(),loadSide()]);renderOverview();drawAll();showTab(store("tab")||"ov");
+  api("/api/settings").then(s=>{S.settings=s}).catch(()=>{})})();
+setInterval(async()=>{await loadOverview();if((store("tab")||"ov")==="ov"){drawEquity()}},10000);
+setInterval(async()=>{await Promise.all([loadCandles(),loadSide()]);drawAll()},60000);
+let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(drawAll,150)});
+</script>
+</body>
+</html>

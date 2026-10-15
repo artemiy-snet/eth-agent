@@ -23,5 +23,8 @@ eth-agent = "agent.cli:main"
 [tool.setuptools.packages.find]
 include = ["agent*"]
 
+[tool.setuptools.package-data]
+"agent.live" = ["web/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

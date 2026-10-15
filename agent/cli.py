@@ -136,8 +136,8 @@ def _cmd_live(a) -> int:
     cfg = Path(a.config)
     if not cfg.exists():
         cfg = Path(__file__).resolve().parent.parent / "config.example.yaml"
-    s = settings.load(cfg, mode=a.mode)
     home = Path(a.home).expanduser()
+    s = settings.load(cfg, mode=a.mode, home=home)
     if a.telegram_setup:
         from agent.live.notify import chat_ids
         sec = runner.read_secrets(home)
@@ -153,10 +153,12 @@ def _cmd_live(a) -> int:
         agent.clear_kill()
         print("Kill switch знято. Запусти агента знову.")
         return 0
-    serve(agent, s.status_port)
-    print(f"Сторінка статусу: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")
-    agent.run(stop_after_s=a.minutes * 60 if a.minutes else None)
-    return 0
+    srv = serve(agent, s.status_port, config_path=cfg)
+    print(f"Панель: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")
+    res = agent.run(stop_after_s=a.minutes * 60 if a.minutes else None)
+    srv.shutdown()
+    srv.server_close()
+    return 3 if res == "restart" else 0
 
 
 LABELS = {
@@ -265,7 +267,8 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--summary-md")
 
     lv = sub.add_parser("live", help="живий агент: paper або testnet")
-    lv.add_argument("--mode", choices=["paper", "testnet", "live"], default="paper")
+    lv.add_argument("--mode", choices=["paper", "testnet", "live"], default=None,
+                    help="за замовчуванням — з налаштувань панелі / конфігу (paper)")
     lv.add_argument("--config", default="config.yaml")
     lv.add_argument("--home", default="~/.eth-agent", help="журнал, стан, secrets.env (поза git)")
     lv.add_argument("--minutes", type=int, default=0, help="зупинитись через N хвилин (для тесту)")

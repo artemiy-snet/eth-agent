@@ -54,9 +54,12 @@ jobs:
               f.write("## Paper smoke\n\n" + msg + "\n\n" + "\n".join(f"- {l} {k}: {m}" for l, k, m in ev[-30:]) + "\n")
           assert not bad, bad
           PY
-      - name: Paper-портфель (2 хв)
+      - name: Paper-портфель (2 хв) + панель
         run: |
+          (sleep 75; curl -fsS http://127.0.0.1:8765/api/overview > smoke_overview.json; curl -fsS "http://127.0.0.1:8765/api/candles?tf=1h" > smoke_candles.json; curl -fsS http://127.0.0.1:8765/ > smoke_index.html) &
           eth-agent live --mode paper --config config.portfolio.yaml --home ./smoke_pf --minutes 2
+          python -c "import json; o=json.load(open('smoke_overview.json')); c=json.load(open('smoke_candles.json')); assert o['price'] and o['last_tick'] and len(c)>100, (o.get('price'), len(c)); print('::notice title=Панель::ціна', o['price'], '· свічок 1h', len(c), '· рукавів', len(o['sleeves']))"
+          grep -q "ETH" smoke_index.html
           python - <<'PY'
           import json, sqlite3, glob
           ev = sqlite3.connect("smoke_pf/journal_paper.sqlite").execute("select level, msg from events").fetchall()

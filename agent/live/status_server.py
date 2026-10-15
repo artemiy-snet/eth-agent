@@ -8,6 +8,7 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 PAGE = """<!doctype html><html lang="uk"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15">
@@ -106,31 +107,135 @@ def render(agent) -> str:
         regime=regime, sleeves=sleeves, events=evs, trades=trs)
 
 
-def serve(agent, port: int) -> ThreadingHTTPServer:
+def overview(agent) -> dict:
+    """Усе для вкладки «Огляд» одним запитом."""
+    from agent.live import panel_api as api
+    sts = [a.last_status or {} for a in getattr(agent, "agents", [agent])]
+    s0 = next((x for x in sts if x), {})
+    now = int(time.time() * 1000)
+    ai = None
+    try:
+        ai = json.loads((agent.home / "ai_news.json").read_text())
+    except (OSError, ValueError):
+        pass
+    an = getattr(agent, "analyst", None)
+    return {
+        "now": now, "mode": s0.get("mode"), "pair": s0.get("pair", "ETHUSDT"), "price": s0.get("price"),
+        "bid": s0.get("bid"), "ask": s0.get("ask"), "connected": s0.get("connected", False),
+        "equity": sum(float(x.get("equity") or 0) for x in sts),
+        "start_equity": sum(float(x.get("start_equity") or 0) for x in sts),
+        "ema_dist_pct": s0.get("ema_dist_pct"), "atr_pct": s0.get("atr_pct"), "anchor_high": s0.get("anchor_high"),
+        "sleeves": sts, "ai": ai,
+        "analyst": None if an is None else {"mode": an.mode, "model": an.model, "every_h": an.every_h,
+                                            "active_regime": an.active_regime(now), "until": an.action_until,
+                                            "size_mult": str(an.size_mult(now)), "trading_disabled": an.trading_disabled,
+                                            "next_run": an.next_run, "running": an.running},
+        "calendar": api.upcoming(now), "calendar_days_left": round(api.calendar.days_left(now)),
+        "killed": any(x.get("killed") for x in sts), "stop_file": (agent.home / "STOP").exists(),
+        "last_tick": max((int(x.get("ts") or 0) for x in sts), default=0),
+        "poll_s": getattr(getattr(agent, "s", None), "poll_s", 10),
+        "recent": api.events(agent.j, 6),
+    }
+
+
+WEB = Path(__file__).with_name("web")
+
+
+def serve(agent, port: int, config_path=None) -> ThreadingHTTPServer:
+    from urllib.parse import parse_qs, urlparse
+
+    from agent.live import panel_api as api
+
+    news_cache = api.NewsCache()
+    mode = (getattr(agent, "agents", [agent])[0]).s.mode
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
         def _send(self, code, body, ctype="text/html; charset=utf-8"):
+            data = body.encode() if isinstance(body, str) else body
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                             "script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
             self.end_headers()
-            self.wfile.write(body.encode())
+            self.wfile.write(data)
+
+        def _json(self, obj, code=200):
+            self._send(code, json.dumps(obj, ensure_ascii=False, default=str), "application/json; charset=utf-8")
+
+        def _host_ok(self) -> bool:
+            host = (self.headers.get("Host") or "").split(":")[0]
+            return host in ("127.0.0.1", "localhost")
 
         def do_GET(self):
-            if self.path.startswith("/api/status"):
-                self._send(200, json.dumps(agent.last_status, ensure_ascii=False), "application/json")
-            else:
-                self._send(200, render(agent))
+            if not self._host_ok():
+                return self._send(403, "forbidden")
+            u = urlparse(self.path)
+            q = parse_qs(u.query)
+            path = u.path
+            if path in ("/", "/index.html"):
+                return self._send(200, (WEB / "index.html").read_bytes())
+            if path == "/lite":
+                return self._send(200, render(agent))
+            if path == "/api/status":
+                return self._json(agent.last_status)
+            if path == "/api/overview":
+                return self._json(overview(agent))
+            if path == "/api/candles":
+                return self._json(api.candles(agent, (q.get("tf") or ["1h"])[0]))
+            if path == "/api/equity":
+                return self._json(api.equity_history(agent.home, mode))
+            if path == "/api/trades":
+                return self._json(api.trades(agent.j))
+            if path == "/api/events":
+                return self._json(api.events(agent.j))
+            if path == "/api/ai":
+                return self._json({"history": api.ai_history(agent.j)})
+            if path == "/api/news":
+                return self._json(news_cache.get())
+            if path == "/api/settings" and config_path:
+                return self._json(api.settings_view(Path(config_path), agent.home))
+            return self._send(404, "not found")
 
         def do_POST(self):
-            name = {"/stop": "STOP", "/flatten": "STOP_FLATTEN"}.get(self.path)
-            if name:
-                (agent.home / name).write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
-            self.send_response(303)
-            self.send_header("Location", "/")
-            self.end_headers()
+            # Захист від запитів зі сторонніх сайтів: свій заголовок + JSON + localhost.
+            if not self._host_ok() or self.headers.get("X-ETH-Agent") != "1" or \
+                    "application/json" not in (self.headers.get("Content-Type") or ""):
+                return self._json({"ok": False, "error": "forbidden"}, 403)
+            n = min(int(self.headers.get("Content-Length") or 0), 65536)
+            try:
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except ValueError:
+                return self._json({"ok": False, "error": "bad json"}, 400)
+            path = urlparse(self.path).path
+            stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            if path in ("/api/stop", "/stop"):
+                (agent.home / "STOP").write_text(stamp)
+                return self._json({"ok": True})
+            if path in ("/api/flatten", "/flatten"):
+                (agent.home / "STOP_FLATTEN").write_text(stamp)
+                return self._json({"ok": True})
+            if path == "/api/clear_kill":
+                (agent.home / "CLEAR_KILL").write_text(stamp)      # виконає торговий цикл, без гонки станів
+                return self._json({"ok": True})
+            if path == "/api/restart":
+                (agent.home / "RESTART").write_text(stamp)
+                return self._json({"ok": True})
+            if path == "/api/settings":
+                res = api.save_settings(agent.home, body)
+                if res.get("ok"):
+                    agent.j.event("INFO", "settings", "налаштування змінено з панелі: "
+                                  + ", ".join(res["saved"] + [k + " (ключ)" for k in res["secrets_saved"]]))
+                return self._json(res, 200 if res.get("ok") else 400)
+            if path.startswith("/api/check/"):
+                return self._json(api.check(path.rsplit("/", 1)[-1], agent.home, mode))
+            return self._json({"ok": False, "error": "not found"}, 404)
 
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
+    srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

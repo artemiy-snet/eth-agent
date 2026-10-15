@@ -163,8 +163,17 @@ def feature_params(raw: dict | None) -> FeatureParams:
                          regime_ema_days=int(c["regime_ema_days"]), event_kinds=str(c["event_kinds"] or ""))
 
 
-def load(path: Path, mode: str | None = None) -> LiveSettings:
+def load_raw(path: Path, home: Path | None = None) -> dict:
+    """Конфіг + overrides.yaml з робочої теки (зміни з панелі; не губляться при оновленні коду)."""
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    ov = (home / "overrides.yaml") if home else None
+    if ov and ov.exists():
+        raw = _merge(raw, yaml.safe_load(ov.read_text(encoding="utf-8")) or {})
+    return raw
+
+
+def load(path: Path, mode: str | None = None, home: Path | None = None) -> LiveSettings:
+    raw = load_raw(path, home)
     agent = raw.get("agent", {})
     live = raw.get("live", {})
     return LiveSettings(

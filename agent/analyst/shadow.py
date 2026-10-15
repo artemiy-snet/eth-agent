@@ -45,6 +45,12 @@ SYSTEM = """Ти — аналітик торгового агента ETH-Аге
 2. Проконтролювати поточні позиції («ставки»): чи стопи на місці, чи немає позицій без стопа,
    застряглих, з аномальним збитком, розбіжностей у стані; коротко оцінити кожен рукав.
 
+Що є НОРМОЮ і НЕ є аномалією (не пиши про це):
+- рукави C / Cm (режимне утримання) не мають стопа на біржі — вони продають, коли ціна падає нижче EMA200 днів;
+- порожній список угод на початку роботи; рукав у USDT без угод; право виведення в ключі (це рішення власника);
+- службові рядки журналу агента («ШІ помітив…», «ордер відхилено…») — це не новини.
+anomalies — ЛИШЕ те, що вимагає дії людини зараз, максимум 2 пункти, по одному короткому реченню. Немає — порожній список.
+
 Ти НЕ:
 - створюєш ордерів і не даєш вказівок «купи/продай зараз»;
 - прогнозуєш ціну точними числами;
@@ -241,6 +247,7 @@ class ShadowAnalyst:
     fallback_models: tuple = ("claude-sonnet-5-5", "claude-haiku-5-5")
     retry_delays: tuple = (5, 20, 60)   # с між повторами при тимчасових збоях API
     sleep: object = None                # для тестів
+    seen_anomalies: list = field(default_factory=list)
     ok_at: int = 0                      # стан для панелі
     fail_count: int = 0
     last_error: str = ""
@@ -341,12 +348,14 @@ class ShadowAnalyst:
         self.journal.event("INFO", "ai_news",
                            f"ШІ ({tag}): {regime} ({rep['confidence']:.2f}) — {facts[:220]} · "
                            f"{'застосовано' if self.mode == 'auto' else 'якби діяв'}: {rec['would_do']}", **rec)
-        for a in rep.get("anomalies", [])[:5]:
-            self.journal.event("WARN", "ai_review", f"ШІ помітив: {a[:240]}")
+        new_anoms = [a for a in rep.get("anomalies", [])[:2] if a not in self.seen_anomalies]
+        for a in new_anoms:
+            self.journal.event("WARN", "ai_review", f"ШІ помітив: {a[:200]}")
+        self.seen_anomalies = list(rep.get("anomalies", [])[:2])
         if trading and rep.get("trade_proposal"):
             rec["trade"] = self._vet_trade(now_ms, market, rep, packet, complete)
         (self.home / "ai_news.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1))
-        if self.notifier and (regime != prev or rep.get("anomalies")):
+        if self.notifier and (regime != prev or new_anoms):
             until = f" до {_iso(self.action_until)}" if self.mode == "auto" and regime != "NORMAL" else ""
             self.notifier.send(f"🧠 ШІ ({tag}): {regime}{until} — {rec['would_do']}. {facts[:300]}"
                                + (f"\nАномалії: {'; '.join(rep['anomalies'][:3])[:400]}" if rep.get("anomalies") else ""))

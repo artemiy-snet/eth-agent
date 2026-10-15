@@ -135,7 +135,7 @@ def overview(agent) -> dict:
         "killed": any(x.get("killed") for x in sts), "stop_file": (agent.home / "STOP").exists(),
         "last_tick": max((int(x.get("ts") or 0) for x in sts), default=0),
         "poll_s": getattr(getattr(agent, "s", None), "poll_s", 10),
-        "recent": api.events(agent.j, 6),
+        "recent": [e for e in api.events(agent.j, 20) if e["kind"] not in ("ai_review",)][:5],
     }
 
 

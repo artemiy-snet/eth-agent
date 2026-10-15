@@ -440,7 +440,7 @@ function renderOverview(){const o=S.ov;if(!o)return;
   else if(o.stop_file)al.append(el("div",{class:"alert crit"},el("b",{},"■"),t("stop_alert")));
   if(o.analyst&&o.analyst.active_regime!=="NORMAL")al.append(el("div",{class:"alert"},el("b",{},"🧠"),
     `${t("ai_brake_alert")}: ${o.analyst.active_regime} — ${o.analyst.size_mult==="0"?t("brake_zero"):t("brake_half")} · ${t("until")} ${fmtTime(o.analyst.until)}`));
-  for(const a of ((o.ai&&o.ai.anomalies)||[]).slice(0,2))al.append(el("div",{class:"alert info"},el("b",{},"⚠"),`${t("anom")}: ${a}`));
+  for(const a of ((o.ai&&o.ai.anomalies)||[]).slice(0,1))al.append(el("div",{class:"alert info"},el("b",{},"⚠"),`${t("anom")}: ${a}`));
   // kpis
   const px=parseFloat(o.price);const c1h=S.candles["1h"]||[];let ch24=null;if(c1h.length>24&&px){const p0=c1h[c1h.length-25][4];ch24=(px/p0-1)*100}
   const pnlPct=o.start_equity?(o.equity/o.start_equity-1)*100:null;const dist=parseFloat(o.ema_dist_pct);

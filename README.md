@@ -1,4 +1,4 @@
-# ETH-Агент · v0.9.3-beta
+# ETH-Агент · v0.9.4-beta
 
 Спотовий торговий агент ETHUSDT (Binance) для телефона (Android/Termux) з веб-панеллю.
 Джерело вимог — [Біблія](docs/BIBLE.md). Встановлення й щоденна робота — [docs/PHONE.md](docs/PHONE.md).

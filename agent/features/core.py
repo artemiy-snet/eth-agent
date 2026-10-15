@@ -7,6 +7,7 @@
   ema_slope_pct— зміна EMA(ema_len) на 1h за ema_slope_h годин, %
   anchor_high  — максимум ціни за anchor_h годин (за закритими 1m-свічками)
   ret_1m_pct   — зміна ціни за останню закриту хвилину, % (для запобіжника «рух > 3 %»)
+  ema_dist_pct — останнє денне закриття відносно EMA(regime_ema_days) денних закриттів, %
 
 Ознаки — float: це не гроші, а вимірювання. Гроші лишаються Decimal.
 """
@@ -60,11 +61,16 @@ def compute_features(df: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd
     ema = h["close"].ewm(span=p.ema_len, adjust=False, min_periods=p.ema_len).mean()
     h["ema_slope_pct"] = (ema / ema.shift(p.ema_slope_h) - 1) * 100
 
+    d = _resample(m1, "1d")
+    ema_d = d["close"].ewm(span=p.regime_ema_days, adjust=False, min_periods=p.regime_ema_days).mean()
+    d["ema_dist_pct"] = (d["close"] / ema_d - 1) * 100
+
     m1c = m1.assign(available=m1["open_time"] + 60_000)
     m1c["anchor_high"] = m1c["high"].rolling(p.anchor_h * 60, min_periods=1).max()
     m1c["ret_1m_pct"] = (m1c["close"] / m1c["open"] - 1) * 100
 
     out = _asof(minutes, a, ["atr", "atr_pct"])
     out = out.merge(_asof(minutes, h, ["ema_slope_pct"]), on="minute")
+    out = out.merge(_asof(minutes, d, ["ema_dist_pct"]), on="minute")
     out = out.merge(_asof(minutes, m1c, ["anchor_high", "ret_1m_pct"]), on="minute")
     return out

@@ -25,19 +25,21 @@ def resample(df, tf):
 
 
 def test_live_features_match_backtest_features():
-    fp = FeatureParams(atr_tf="15m", atr_len=5, ema_len=10, ema_slope_h=2, anchor_h=2)
-    df = synthetic_klines(n=3000)
+    fp = FeatureParams(atr_tf="15m", atr_len=5, ema_len=10, ema_slope_h=2, anchor_h=2, regime_ema_days=3)
+    df = synthetic_klines(n=8000)
     ref = compute_features(df, fp)
     k_atr, k_1h, k_1m = resample(df, "15m"), resample(df, "1h"), resample(df, "1m")
-    for i in (1500, 2222, 2999):
+    k_1d = resample(df, "1d")
+    for i in (5000, 6222, 7999):
         now = int(ref.minute.iloc[i])
-        f, ret = fl.compute(k_atr, k_1h, k_1m, now, fp)
+        f, ret = fl.compute(k_atr, k_1h, k_1m, now, fp, k_1d=k_1d)
         r = ref.iloc[i]
         assert math.isclose(float(f.atr), r.atr, rel_tol=1e-6)
         assert math.isclose(float(f.atr_pct), r.atr_pct, rel_tol=1e-5)
         assert math.isclose(float(f.ema_slope_pct), r.ema_slope_pct, rel_tol=1e-4, abs_tol=1e-6)
         assert math.isclose(float(f.anchor_high), r.anchor_high, rel_tol=1e-9)
         assert math.isclose(ret, r.ret_1m_pct, rel_tol=1e-9, abs_tol=1e-12)
+        assert math.isclose(float(f.ema_dist_pct), r.ema_dist_pct, rel_tol=1e-4, abs_tol=1e-6)
 
 
 def test_live_ignores_unclosed_candle():

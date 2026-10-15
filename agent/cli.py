@@ -56,6 +56,20 @@ def _cmd_backtest(a) -> int:
                      RiskParams(**cfg.risk.model_dump()), FeatureParams(**cfg.features.model_dump()),
                      slippage_pct=cfg.backtest.slippage_pct)
         out = {"strategy": "v3", **rep.summary()}
+    elif a.strategy == "trend":
+        import dataclasses
+
+        from agent.backtest.v3_engine import run_v3
+        from agent.features import FeatureParams
+        from agent.risk import RiskParams
+        from agent.strategy import trend
+
+        fp = dataclasses.replace(FeatureParams(**cfg.features.model_dump()), atr_tf="1d",
+                                 anchor_h=cfg.trend.breakout_days * 24)
+        rep = run_v3(df, cfg.trend.to_params(filters.step_size, filters.min_notional),
+                     RiskParams(**cfg.risk.model_dump()), fp, slippage_pct=cfg.backtest.slippage_pct,
+                     strategy=trend)
+        out = {"strategy": "trend", **rep.summary()}
     else:
         if cfg.legacy is None:
             print("Немає секції legacy у конфігу")
@@ -166,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--config", default="config.yaml")
     b.add_argument("--start", required=True)
     b.add_argument("--end", required=True)
-    b.add_argument("--strategy", default="legacy_v2", choices=["legacy_v2", "v3"])
+    b.add_argument("--strategy", default="legacy_v2", choices=["legacy_v2", "v3", "trend"])
     b.add_argument("--out", help="зберегти звіт JSON")
     b.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ",
                    help="перевизначити параметр конфігу, напр. legacy.bots=7 (можна кілька разів)")

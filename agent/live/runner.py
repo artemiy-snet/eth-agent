@@ -94,6 +94,7 @@ class Agent:
         try:
             k_atr = self.c.klines(self.s.pair, fp.atr_tf, limit=200)
             k_1h = self.c.klines(self.s.pair, "1h", limit=1000)
+            k_1d = self.c.klines(self.s.pair, "1d", limit=1000)
             need = fp.anchor_h * 60 + 1
             k_1m = self.c.klines(self.s.pair, "1m", limit=min(need, 1000))
             while len(k_1m) < need:
@@ -104,7 +105,7 @@ class Agent:
         except (NetworkError, BinanceError) as e:
             self.j.event("WARN", "features", f"ознаки не оновлено: {e}")
             return
-        feat, ret = features_live.compute(k_atr, k_1h, k_1m, now, fp)
+        feat, ret = features_live.compute(k_atr, k_1h, k_1m, now, fp, k_1d=k_1d)
         self.m.feat, self.m.feat_ts = feat, now
         minute = now // 60_000
         if minute != self.m.last_minute and ret == ret:          # ret == ret → не NaN

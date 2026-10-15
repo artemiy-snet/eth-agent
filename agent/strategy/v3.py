@@ -63,6 +63,7 @@ class V3Params:
     trend_block_pct: Decimal | None = D("-3")   # заборона входів, коли EMA200(1h) за 24 год впала більше
     atr_min_pct: Decimal | None = D("0.3")
     atr_max_pct: Decimal | None = D("4.0")
+    regime_min_pct: Decimal | None = None       # входи лише коли ціна ≥ EMA200d × (1 + x/100); None — вимкнено
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class Features:
     atr_pct: Decimal | None = None
     ema_slope_pct: Decimal | None = None
     anchor_high: Decimal | None = None
+    ema_dist_pct: Decimal | None = None      # режим: ціна відносно 200-денної EMA, %
 
 
 @dataclass
@@ -119,6 +121,8 @@ def entry_gate(f: Features, p: V3Params) -> str | None:
         return "atr_low"
     if p.atr_max_pct is not None and f.atr_pct is not None and f.atr_pct > p.atr_max_pct:
         return "atr_high"
+    if p.regime_min_pct is not None and (f.ema_dist_pct is None or f.ema_dist_pct < p.regime_min_pct):
+        return "regime_down"
     return None
 
 

@@ -20,9 +20,10 @@ V3_DEFAULTS = {
     "sell": {"limit_up": "2.0", "limit_bot": "-1.0", "action_up": "0.5", "action_bot": "-0.4"},
     "min_edge_pct": "0.15", "fee_pct": "0.1", "k_stop_atr": "2", "max_hold_h": 72,
     "risk_per_trade_pct": "0.5",
-    "filters": {"trend_block_pct": "-3", "atr_min_pct": "0.3", "atr_max_pct": "4.0"},
+    "filters": {"trend_block_pct": "-3", "atr_min_pct": "0.3", "atr_max_pct": "4.0", "regime_min_pct": None},
 }
-FEATURE_DEFAULTS = {"atr_tf": "1d", "atr_len": 14, "ema_len": 200, "ema_slope_h": 24, "anchor_h": 24}
+FEATURE_DEFAULTS = {"atr_tf": "1d", "atr_len": 14, "ema_len": 200, "ema_slope_h": 24, "anchor_h": 24,
+                    "regime_ema_days": 200}
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def v3_params(raw: dict, qty_step: Decimal = D("0.0001"), min_notional: Decimal 
         k_stop_atr=D(c["k_stop_atr"]), max_hold_h=int(c["max_hold_h"]),
         risk_per_trade_pct=D(c["risk_per_trade_pct"]), qty_step=qty_step, min_notional=min_notional,
         trend_block_pct=_dec_or_none(f.get("trend_block_pct")), atr_min_pct=_dec_or_none(f.get("atr_min_pct")),
-        atr_max_pct=_dec_or_none(f.get("atr_max_pct")),
+        atr_max_pct=_dec_or_none(f.get("atr_max_pct")), regime_min_pct=_dec_or_none(f.get("regime_min_pct")),
     )
 
 
@@ -76,7 +77,8 @@ def risk_params(raw: dict | None) -> RiskParams:
 def feature_params(raw: dict | None) -> FeatureParams:
     c = _merge(FEATURE_DEFAULTS, raw)
     return FeatureParams(atr_tf=str(c["atr_tf"]), atr_len=int(c["atr_len"]), ema_len=int(c["ema_len"]),
-                         ema_slope_h=int(c["ema_slope_h"]), anchor_h=int(c["anchor_h"]))
+                         ema_slope_h=int(c["ema_slope_h"]), anchor_h=int(c["anchor_h"]),
+                         regime_ema_days=int(c["regime_ema_days"]))
 
 
 def load(path: Path, mode: str | None = None) -> LiveSettings:

@@ -21,7 +21,7 @@ import pandas as pd
 
 VISION_URL = "https://data.binance.vision/data/spot/monthly/klines/{s}/{i}/{s}-{i}-{m}.zip"
 VISION_DAILY_URL = "https://data.binance.vision/data/spot/daily/klines/{s}/{i}/{s}-{i}-{d}.zip"
-REST_URL = "https://api.binance.com/api/v3/klines"
+REST_URL = "https://data-api.binance.vision/api/v3/klines"
 COLUMNS = [
     "open_time", "open", "high", "low", "close", "volume",
     "close_time", "quote_volume", "trades", "taker_base", "taker_quote", "ignore",

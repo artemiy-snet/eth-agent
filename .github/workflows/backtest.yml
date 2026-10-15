@@ -17,8 +17,13 @@ on:
       strategy:
         description: "Стратегія"
         type: choice
-        options: [v3, legacy_v2]
+        options: [v3, trend, legacy_v2]
         default: v3
+      pair:
+        description: "Пара"
+        type: choice
+        options: [ETHUSDT, BTCUSDT, SOLUSDT, BNBUSDT]
+        default: ETHUSDT
       bots:
         description: "Кількість ботів (порожньо = з конфігу)"
         required: false
@@ -66,6 +71,7 @@ jobs:
           IN_ANY: ${{ inputs.sell_on_any_level }}
           IN_EXTRA: ${{ inputs.extra }}
           IN_STRATEGY: ${{ inputs.strategy }}
+          IN_PAIR: ${{ inputs.pair }}
         run: |
           python - <<'PY'
           import os, re
@@ -78,20 +84,22 @@ jobs:
           start = os.environ["IN_START"].strip() or f"{y0:04d}-{m0:02d}"
           ym = re.compile(r"^\d{4}-\d{2}$")
           assert ym.match(start) and ym.match(end), "формат YYYY-MM"
-          sets = ["agent.mode=backtest"]
+          sets = ["agent.mode=backtest", "agent.pair=" + os.environ["IN_PAIR"]]
           num = re.compile(r"^-?\d+(\.\d+)?$")
           def add(key, val):
               val = val.strip()
               if val:
                   assert num.match(val), f"{key}: очікую число, отримав {val!r}"
                   sets.append(f"{key}={val}")
-          v3 = os.environ["IN_STRATEGY"] == "v3"
-          sec = "v3" if v3 else "legacy"
+          strat = os.environ["IN_STRATEGY"]
+          v3 = strat in ("v3", "trend")
+          sec = {"v3": "v3", "trend": "trend"}.get(strat, "legacy")
           add(f"{sec}.bots", os.environ["IN_BOTS"])
-          add("v3.interval_atr" if v3 else "legacy.interval_pct", os.environ["IN_INTERVAL"])
+          if strat != "trend":
+              add("v3.interval_atr" if v3 else "legacy.interval_pct", os.environ["IN_INTERVAL"])
           lim = os.environ["IN_LIMIT"].strip().lstrip("+-")
           if lim and v3:
-              add("v3.k_stop_atr", lim)
+              add(f"{sec}.k_stop_atr", lim)
           elif lim:
               for side in ("buy", "sell"):
                   add(f"legacy.{side}.limit_up", lim)
@@ -111,14 +119,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data/klines
-          key: klines-ETHUSDT-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
-          restore-keys: klines-ETHUSDT-
+          key: klines-${{ inputs.pair }}-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
+          restore-keys: klines-${{ inputs.pair }}-
 
       - name: Завантаження історії (data.binance.vision)
-        run: eth-agent fetch --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
+        run: eth-agent fetch --symbol ${{ inputs.pair }} --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
 
       - name: Пропуски в даних
-        run: eth-agent gaps --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} | head -20
+        run: eth-agent gaps --symbol ${{ inputs.pair }} --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} | head -20
 
       - name: Бектест
         run: |

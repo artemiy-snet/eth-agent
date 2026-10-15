@@ -25,14 +25,15 @@ def _dec(x: float) -> Decimal | None:
 
 def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
            fp: FeatureParams = FeatureParams(), slippage_pct: Decimal = D("0.05"),
-           feats: pd.DataFrame | None = None) -> Report:
-    """feats — передраховані ознаки (з прогрітою історією до початку df), інакше рахуються з df."""
+           feats: pd.DataFrame | None = None, strategy=v3) -> Report:
+    """feats — передраховані ознаки (з прогрітою історією до початку df), інакше рахуються з df.
+    strategy — модуль стратегії з init_state/step/on_fill/on_reject (v3 або trend)."""
     if feats is None:
         feats = compute_features(df, fp)
     fmap = {int(m): i for i, m in enumerate(feats["minute"].to_numpy())}
-    cols = {c: feats[c].to_numpy() for c in ("atr", "atr_pct", "ema_slope_pct", "anchor_high", "ret_1m_pct")}
+    cols = {c: feats[c].to_numpy() for c in ("atr", "atr_pct", "ema_slope_pct", "anchor_high", "ret_1m_pct", "ema_dist_pct")}
 
-    state = v3.init_state(p)
+    state = strategy.init_state(p)
     risk = RiskGuard(rp)
     trades: list[Trade] = []
     entries: dict[int, tuple[int, Decimal, Decimal]] = {}
@@ -59,7 +60,8 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
             if i is not None:
                 f = v3.Features(atr=_dec(cols["atr"][i]), atr_pct=_dec(cols["atr_pct"][i]),
                                 ema_slope_pct=_dec(cols["ema_slope_pct"][i]),
-                                anchor_high=_dec(cols["anchor_high"][i]))
+                                anchor_high=_dec(cols["anchor_high"][i]),
+                                ema_dist_pct=_dec(cols["ema_dist_pct"][i]))
                 mv = _dec(cols["ret_1m_pct"][i])
                 if mv is not None:
                     risk.on_price_move(minute, mv)
@@ -76,7 +78,7 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
             if peak > 0:
                 max_dd = max(max_dd, (peak - eq) / peak * HUNDRED)
 
-        state, intents, blocked = v3.step(state, tick, f, p)
+        state, intents, blocked = strategy.step(state, tick, f, p)
         for _, why in blocked:
             gate_blocks[why] += 1
         for it in intents:
@@ -88,18 +90,18 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
             veto = risk.check(it, ctx)
             if veto:
                 vetoes[veto.split(":")[0]] += 1
-                v3.on_reject(state, it.bot_id)
+                strategy.on_reject(state, it.bot_id)
                 continue
             px = it.price * (1 + slip) if it.side is Side.BUY else it.price * (1 - slip)
             fill = Fill(tick.ts, it.bot_id, it.side, it.qty, px, it.qty * px * fee)
             risk.on_order(tick.ts)
             b = state.bots[it.bot_id]
             if it.side is Side.BUY:
-                v3.on_fill(state, fill, atr=f.atr)
+                strategy.on_fill(state, fill, atr=f.atr)
                 entries[it.bot_id] = (tick.ts, px, b.entry_cost)
             else:
                 reason = b.pending_reason
-                v3.on_fill(state, fill)
+                strategy.on_fill(state, fill)
                 ets, epx, cost = entries.pop(it.bot_id, (tick.ts, px, ZERO))
                 pnl = fill.qty * px - fill.fee_quote - cost
                 trades.append(Trade(it.bot_id, ets, tick.ts, epx, px, fill.qty, pnl))

@@ -41,7 +41,7 @@ def ema_series(xs: list[float], span: int) -> list[float]:
 
 
 def compute(k_atr: list[Candle], k_1h: list[Candle], k_1m: list[Candle], now_ms: int,
-            p: FeatureParams) -> tuple[Features, float]:
+            p: FeatureParams, k_1d: list[Candle] | None = None) -> tuple[Features, float]:
     """Повертає (ознаки для стратегії, рух останньої закритої хвилини у %)."""
     tf = TF_MS[p.atr_tf]
     ca = closed(k_atr, tf, now_ms)
@@ -59,5 +59,13 @@ def compute(k_atr: list[Candle], k_1h: list[Candle], k_1m: list[Candle], now_ms:
     anchor = max(c[2] for c in window) if window else math.nan
     ret_1m = (cm[-1][4] / cm[-1][1] - 1) * 100 if cm else math.nan
 
+    dist = math.nan
+    if k_1d:
+        cd = closed(k_1d, TF_MS["1d"], now_ms)
+        ema_d = ema_series([c[4] for c in cd], p.regime_ema_days)
+        if ema_d and not math.isnan(ema_d[-1]):
+            dist = (cd[-1][4] / ema_d[-1] - 1) * 100
+
     dec = lambda x: None if x is None or math.isnan(x) else D(f"{x:.6f}")
-    return Features(atr=dec(atr), atr_pct=dec(atr_pct), ema_slope_pct=dec(slope), anchor_high=dec(anchor)), ret_1m
+    return Features(atr=dec(atr), atr_pct=dec(atr_pct), ema_slope_pct=dec(slope), anchor_high=dec(anchor),
+                    ema_dist_pct=dec(dist)), ret_1m

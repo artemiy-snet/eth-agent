@@ -15,3 +15,4 @@ class FeatureParams:
     ema_len: int = 200
     ema_slope_h: int = 24
     anchor_h: int = 24
+    regime_ema_days: int = 200      # режим: ціна відносно EMA денних закриттів

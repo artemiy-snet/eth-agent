@@ -62,6 +62,7 @@ class V3FiltersCfg(BaseModel):
     trend_block_pct: Decimal | None = Decimal("-3")
     atr_min_pct: Decimal | None = Decimal("0.3")
     atr_max_pct: Decimal | None = Decimal("4.0")
+    regime_min_pct: Decimal | None = None
 
 
 class V3Cfg(BaseModel):
@@ -91,12 +92,35 @@ class V3Cfg(BaseModel):
         )
 
 
+class TrendCfg(BaseModel):
+    """Кандидат «слідування за трендом» (agent/strategy/trend.py)."""
+
+    bots: int = 1
+    budget_usdt: Decimal = Decimal("500")
+    breakout_days: int = 20
+    k_stop_atr: Decimal = Decimal("3")
+    k_trail_atr: Decimal = Decimal("3")
+    risk_per_trade_pct: Decimal = Decimal("0.5")
+    regime_min_pct: Decimal | None = Decimal("0")
+    regime_exit: bool = True
+    fee_pct: Decimal = Decimal("0.1")
+
+    def to_params(self, qty_step: Decimal = Decimal("0.0001"), min_notional: Decimal = Decimal("5")):
+        from agent.strategy.trend import TrendParams
+
+        return TrendParams(bots=self.bots, budget_usdt=self.budget_usdt, k_stop_atr=self.k_stop_atr,
+                           k_trail_atr=self.k_trail_atr, risk_per_trade_pct=self.risk_per_trade_pct,
+                           regime_min_pct=self.regime_min_pct, regime_exit=self.regime_exit,
+                           fee_pct=self.fee_pct, qty_step=qty_step, min_notional=min_notional)
+
+
 class FeaturesCfg(BaseModel):
     atr_tf: Literal["5m", "15m", "30m", "1h", "4h", "1d"] = "1d"
     atr_len: int = 14
     ema_len: int = 200
     ema_slope_h: int = 24
     anchor_h: int = 24
+    regime_ema_days: int = 200
 
 
 class RiskCfg(BaseModel):
@@ -120,6 +144,7 @@ class Config(BaseModel):
     agent: AgentSection = AgentSection()
     legacy: LegacyCfg | None = None
     v3: V3Cfg = V3Cfg()
+    trend: TrendCfg = TrendCfg()
     features: FeaturesCfg = FeaturesCfg()
     risk: RiskCfg = RiskCfg()
     backtest: BacktestCfg = BacktestCfg()

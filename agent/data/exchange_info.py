@@ -9,7 +9,8 @@ from pathlib import Path
 
 from agent.money import ZERO, D, floor_to_step
 
-EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
+# data-api.binance.vision — публічні ринкові дані Binance, доступні й там, де api.binance.com блокується
+EXCHANGE_INFO_URL = "https://data-api.binance.vision/api/v3/exchangeInfo"
 
 
 @dataclass(frozen=True)

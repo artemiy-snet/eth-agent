@@ -415,7 +415,8 @@ def book_for_analyst(agents: list, journal) -> dict:
         })
     trades = [{"bot": t[0], "entry_px": t[3], "exit_px": t[4], "pnl": t[6], "reason": t[7]}
               for t in journal.recent_trades(10)]
-    out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades}
+    out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades,
+           "recent_trades_note": "лише закриті угоди; відкриті позиції — у sleeves[].positions"}
     out.update(fresh_warnings(journal.recent_events(300), int(time.time() * 1000)))
     ai = ai_agent(agents)
     if ai is not None and ai.m.bid > 0:

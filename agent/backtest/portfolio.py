@@ -26,7 +26,7 @@ class Curve:
 def run_sleeve(df: pd.DataFrame, raw_cfg: dict, name: str):
     from agent.backtest.v3_engine import run_v3
     from agent.config import Config, apply_overrides
-    from agent.data.exchange_info import ETHUSDT_DEFAULT
+    from agent.data.exchange_info import default_filters
     from agent.features import FeatureParams
     from agent.risk import RiskParams
     from agent.strategy import trend
@@ -34,7 +34,7 @@ def run_sleeve(df: pd.DataFrame, raw_cfg: dict, name: str):
     import copy
     sl = SLEEVES[name]
     cfg = Config.model_validate(apply_overrides(copy.deepcopy(raw_cfg), ["agent.mode=backtest", *sl["set"]]))
-    f = ETHUSDT_DEFAULT
+    f = default_filters(cfg.agent.pair)
     fp = FeatureParams(**cfg.features.model_dump())
     rp = RiskParams(**cfg.risk.model_dump())
     if sl["strategy"] == "trend":
@@ -109,7 +109,7 @@ def report_md(r: dict, start: str, end: str) -> str:
         L.append(f"| {name} | {comp} | {f(p['pnl_pct'])} | {f(p['cagr_pct'])} | {f(p['max_dd_pct'])} | "
                  f"{f(p['sharpe'])} | {f(p['calmar'])} |")
     b = r["buy_and_hold"]
-    L.append(f"| просто тримати ETH | 100 % ETH | {f(b['pnl_pct'])} | {f(b['cagr_pct'])} | {f(b['max_dd_pct'])} | "
+    L.append(f"| просто тримати монету | 100 % у монеті | {f(b['pnl_pct'])} | {f(b['cagr_pct'])} | {f(b['max_dd_pct'])} | "
              f"{f(b['sharpe'])} | {f(b['calmar'])} |")
     L += ["", "### Рукави", "", "| Рукав | Опис | Результат, % | Річна, % | Макс. просадка, % | Sharpe | Угод | PF |",
           "|---|---|---|---|---|---|---|---|"]

@@ -13,6 +13,11 @@ on:
         description: "Кінець, YYYY-MM"
         required: false
         default: "2026-09"
+      pair:
+        description: "Пара"
+        type: choice
+        options: [ETHUSDT, BTCUSDT, SOLUSDT, BNBUSDT]
+        default: ETHUSDT
       preset:
         description: "Портфель"
         type: choice
@@ -48,15 +53,15 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: data/klines
-          key: klines-ETHUSDT-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
-          restore-keys: klines-ETHUSDT-
-      - run: eth-agent fetch --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
+          key: klines-${{ inputs.pair }}-${{ steps.args.outputs.start }}-${{ steps.args.outputs.end }}
+          restore-keys: klines-${{ inputs.pair }}-
+      - run: eth-agent fetch --symbol ${{ inputs.pair }} --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }}
       - name: Портфелі
         env:
           PRESET: ${{ inputs.preset }}
         run: |
           mkdir -p reports
           eth-agent portfolio --config config.example.yaml --start ${{ steps.args.outputs.start }} \
-            --end ${{ steps.args.outputs.end }} --preset "$PRESET" --summary-md reports/portfolio.md
+            --end ${{ steps.args.outputs.end }} --preset "$PRESET" --pair "${{ inputs.pair }}" --summary-md reports/portfolio.md
           cat reports/portfolio.md >> "$GITHUB_STEP_SUMMARY"
           python -c "t=open('reports/portfolio.md',encoding='utf-8').read().replace(chr(10),'%0A'); print('::notice title=Портфелі::'+t[:3900])"

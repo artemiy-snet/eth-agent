@@ -115,11 +115,15 @@ def _cmd_portfolio(a) -> int:
     from agent.data import klines
 
     raw = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) or {}
-    df = klines.load(raw.get("agent", {}).get("pair", "ETHUSDT"), a.start, a.end, Path(a.data))
+    if a.pair:
+        raw.setdefault("agent", {})["pair"] = a.pair.upper()
+    pair = raw.get("agent", {}).get("pair", "ETHUSDT")
+    df = klines.load(pair, a.start, a.end, Path(a.data))
+    print(f"Пара: {pair}")
     from agent.strategy.sleeves import GROUPS
     presets = GROUPS.get(a.preset) or [a.preset]
     r = pf.run_all(df, raw, presets, workers=os.cpu_count())
-    md = pf.report_md(r, a.start, a.end)
+    md = f"## {pair}\n\n" + pf.report_md(r, a.start, a.end)
     if a.preset == "macro":
         from agent.backtest import event_study as es
         md += "\n" + es.report_md(es.study(df, 24, 24), 24, 24) + "\n" + es.report_md(es.study(df, 24, 2), 24, 2)
@@ -271,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--start", required=True)
     pp.add_argument("--end", required=True)
     pp.add_argument("--preset", default="all")
+    pp.add_argument("--pair", default="", help="торгова пара, напр. BTCUSDT (за замовчуванням — з конфігу)")
     pp.add_argument("--summary-md")
 
     lv = sub.add_parser("live", help="живий агент: paper або testnet")

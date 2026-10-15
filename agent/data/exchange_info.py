@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import json
 from dataclasses import dataclass
 from decimal import Decimal
@@ -81,4 +83,10 @@ def load_cached_filters(symbol: str, cache_dir: Path) -> SymbolFilters | None:
     return SymbolFilters.from_exchange_info(json.loads(p.read_text()), symbol)
 
 
-__all__ = ["SymbolFilters", "ETHUSDT_DEFAULT", "fetch_filters", "load_cached_filters", "ZERO"]
+def default_filters(symbol: str) -> SymbolFilters:
+    """Типові фільтри для бектесту без мережі (крок кількості відрізняється між парами)."""
+    step = {"BTCUSDT": "0.00001", "ETHUSDT": "0.0001", "BNBUSDT": "0.001", "SOLUSDT": "0.001"}.get(symbol.upper(), "0.0001")
+    return dataclasses.replace(ETHUSDT_DEFAULT, symbol=symbol.upper(), step_size=D(step))
+
+
+__all__ = ["SymbolFilters", "ETHUSDT_DEFAULT", "default_filters", "fetch_filters", "load_cached_filters", "ZERO"]

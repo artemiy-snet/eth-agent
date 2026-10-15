@@ -103,6 +103,8 @@ class TrendCfg(BaseModel):
     risk_per_trade_pct: Decimal = Decimal("0.5")
     regime_min_pct: Decimal | None = Decimal("0")
     regime_exit: bool = True
+    alloc_pct: Decimal | None = None
+    breakout: bool = True
     fee_pct: Decimal = Decimal("0.1")
 
     def to_params(self, qty_step: Decimal = Decimal("0.0001"), min_notional: Decimal = Decimal("5")):
@@ -111,6 +113,7 @@ class TrendCfg(BaseModel):
         return TrendParams(bots=self.bots, budget_usdt=self.budget_usdt, k_stop_atr=self.k_stop_atr,
                            k_trail_atr=self.k_trail_atr, risk_per_trade_pct=self.risk_per_trade_pct,
                            regime_min_pct=self.regime_min_pct, regime_exit=self.regime_exit,
+                           alloc_pct=self.alloc_pct, breakout=self.breakout,
                            fee_pct=self.fee_pct, qty_step=qty_step, min_notional=min_notional)
 
 

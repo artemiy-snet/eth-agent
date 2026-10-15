@@ -41,6 +41,8 @@ class TrendParams:
     fee_pct: Decimal = D("0.1")
     qty_step: Decimal = D("0.0001")
     min_notional: Decimal = D("5")
+    alloc_pct: Decimal | None = None      # фіксована частка капіталу замість ризик-розміру (режимне утримання)
+    breakout: bool = True                 # False — вхід лише за режимом, без пробою максимуму
     # сумісність з position_qty з v3
     min_edge_pct: Decimal = D("0")
 
@@ -50,7 +52,7 @@ def init_state(p: TrendParams) -> V3State:
 
 
 def entry_gate(f: Features, p: TrendParams) -> str | None:
-    if f.atr is None or f.atr <= 0 or f.anchor_high is None:
+    if f.atr is None or f.atr <= 0 or (p.breakout and f.anchor_high is None):
         return "no_features"
     if p.regime_min_pct is not None and (f.ema_dist_pct is None or f.ema_dist_pct < p.regime_min_pct):
         return "regime_down"
@@ -64,14 +66,19 @@ def step(state: V3State, tick: Tick, f: Features, p: TrendParams) -> tuple[V3Sta
     capital = state.equity(px)
     for b in state.bots:
         if b.phase is Phase.FLAT:
-            if f.anchor_high is None or px <= f.anchor_high:
+            if p.breakout and (f.anchor_high is None or px <= f.anchor_high):
                 continue
             why = entry_gate(f, p)
             if why:
                 blocked.append((b.bot_id, why))
                 continue
             stop = px - p.k_stop_atr * f.atr
-            qty = v3.position_qty(px, stop, b.usdt, capital, p)   # type: ignore[arg-type]
+            if p.alloc_pct is not None:
+                qty = floor_to_step(min(capital * p.alloc_pct / 100, b.usdt) / (px * (1 + p.fee_pct / 100)),
+                                    p.qty_step)
+                qty = qty if qty * px >= p.min_notional else D(0)
+            else:
+                qty = v3.position_qty(px, stop, b.usdt, capital, p)   # type: ignore[arg-type]
             if qty <= 0:
                 blocked.append((b.bot_id, "size_zero"))
                 continue

@@ -44,6 +44,13 @@ SCHEMA = [
     _f("live.preset", "select", "general", opts=["як_у_портфелі", "live_міні"] + LIVE_PRESETS, uk="Live: склад",
        en="Live: mix", help_uk="як_у_портфелі — повна версія; live_міні — під малий капітал (мін. ордер 5 $).",
        help_en="as portfolio — full version; live_міні — for small capital (min order $5)."),
+    _f("earn.enabled", "bool", "general", uk="Відсотки на вільні USDT (Binance Earn, лише live)",
+       en="Interest on idle USDT (Binance Earn, live only)",
+       help_uk="Вільні USDT агента лежать у гнучкому депозиті й приносять відсотки; перед купівлею повертаються на спот. "
+               "Потрібне право ключа на Simple Earn; якщо його немає — функція вимкнеться сама.",
+       help_en="Agent's idle USDT sit in a flexible deposit and earn interest; moved back to spot before each buy."),
+    _f("earn.reserve_pct", "number", "general", 0, 100, step=5, uk="Earn: лишати на споті, % USDT агента",
+       en="Earn: keep on spot, % of agent USDT"),
     _f("portfolio.capital_usdt", "number", "portfolio", 10, 1_000_000, step=1, uk="Капітал, USDT", en="Capital, USDT"),
     _f("portfolio.preset", "select", "portfolio", opts=LIVE_PRESETS, uk="Портфель", en="Portfolio",
        help_uk="Склад стратегій. Більший дохід = більша просадка (див. підказку).",

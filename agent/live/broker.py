@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
 from agent.data.exchange_info import SymbolFilters
-from agent.live.binance import BinanceError, Client, NetworkError, fill_from_response, fmt
+from agent.live.binance import BinanceError, Client, NetworkError, fee_in, fill_from_response, fmt
 from agent.money import HUNDRED, ZERO, D
 from agent.strategy.types import Fill, Intent, Side
 
@@ -77,12 +77,23 @@ class ExchangeBroker:
         self.buffer = stop_buffer_pct / HUNDRED
         self.attempts, self.sleep = resolve_attempts, sleep
         self.prefix = "eat" if mode == "testnet" else "eal"
+        self.earn = None                 # EarnManager (гнучкий депозит для вільних USDT), див. runner.build
+
+    def bnb_price(self) -> Decimal:
+        try:
+            bid, ask = self.c.book_ticker("BNBUSDT")
+            return (bid + ask) / 2
+        except (BinanceError, NetworkError):
+            return ZERO
 
     # --- ордери ---------------------------------------------------------------------------
     def _to_fill(self, o: dict, it_bot: int, side: Side, ts: int) -> Fill | None:
         qty, avg, fee_usdt, fee_eth = fill_from_response(o)
         if qty <= 0:
             return None
+        bnb = fee_in(o, "BNB")
+        if bnb > 0:                     # комісія в BNB: ETH приходить повністю, вартість BNB — у витрати угоди
+            fee_usdt += bnb * self.bnb_price()
         if side is Side.BUY:
             # комісія з ETH: бот отримав менше ETH; у USDT-еквіваленті — щоб баланс USDT зійшовся
             return Fill(ts, it_bot, side, qty - fee_eth, avg, fee_usdt + fee_eth * avg)
@@ -96,6 +107,8 @@ class ExchangeBroker:
             if quote < self.f.min_notional:
                 return ExecResult("REJECTED", coid, detail=f"сума {quote} < minNotional")
             params["quoteOrderQty"] = fmt(quote)
+            if self.earn is not None:
+                self.earn.ensure_spot(quote * D("1.002"))
         else:
             qty = self.f.round_qty(it.qty)
             why = self.f.check(qty, bid)
@@ -183,8 +196,11 @@ class ExchangeBroker:
             acc = self.c.account()
         except (BinanceError, NetworkError):
             return None
-        return {b["asset"]: Decimal(b["free"]) + Decimal(b["locked"]) for b in acc.get("balances", [])
-                if b["asset"] in ("ETH", "USDT")}
+        out = {b["asset"]: Decimal(b["free"]) + Decimal(b["locked"]) for b in acc.get("balances", [])
+               if b["asset"] in ("ETH", "USDT", "BNB")}
+        if self.earn is not None:        # USDT агента, що лежать у гнучкому депозиті, теж його
+            out["USDT"] = out.get("USDT", ZERO) + self.earn.parked
+        return out
 
 
 __all__ = ["PaperBroker", "ExchangeBroker", "ExecResult", "ZERO"]

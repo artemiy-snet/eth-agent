@@ -136,6 +136,8 @@ def overview(agent) -> dict:
         "last_tick": max((int(x.get("ts") or 0) for x in sts), default=0),
         "poll_s": getattr(getattr(agent, "s", None), "poll_s", 10),
         "recent": [e for e in api.events(agent.j, 20) if e["kind"] not in ("ai_review",)][:5],
+        "earn": (lambda em: em.status() if em else None)(getattr(getattr(agent, "broker", None), "earn", None)),
+        "bnb_fees": getattr(agent, "bnb_fees", None),
     }
 
 

@@ -74,6 +74,7 @@ class LiveSettings:
     live_confirmed: bool = False                # live.confirmed — підтвердження Командира з панелі
     live_max_capital: Decimal = D("20")         # жорстка межа капіталу агента в live
     analyst: dict = field(default_factory=dict)   # секція analyst (ШІ-аналітик новин, тіньовий режим)
+    earn: dict = field(default_factory=dict)      # секція earn: {enabled, reserve_pct} — відсотки на вільні USDT (live)
 
 
 def _merge(base: dict, over: dict | None) -> dict:
@@ -220,6 +221,7 @@ def load(path: Path, mode: str | None = None, home: Path | None = None) -> LiveS
         sleeves=build_sleeves(raw)[0],
         capital_usdt=build_sleeves(raw)[1],
         analyst=dict(raw.get("analyst") or {}),
+        earn=dict(raw.get("earn") or {}),
         live_confirmed=bool(live.get("confirmed", False)),
         live_max_capital=D(str(live.get("max_capital_usdt", 20))),
     )

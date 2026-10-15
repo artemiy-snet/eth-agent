@@ -163,10 +163,14 @@ def _cmd_live(a) -> int:
         print(f"Порт {s.status_port} зайнятий — вже працює інший (можливо, старий) агент.\n"
               f"Зупини його:  pkill -f agent.cli   і запусти знову:  bash scripts/run.sh")
         return 4
+    from agent.live import tg_bot
+    tg = tg_bot.start(agent, runner.read_secrets(home), home)
     from agent import __version__
-    print(f"ETH-Агент v{__version__} · режим {s.mode}")
+    print(f"ETH-Агент v{__version__} · режим {s.mode}" + (" · Telegram-команди: /status /stop /flatten /resume" if tg else ""))
     print(f"Панель: http://127.0.0.1:{s.status_port}   ·   журнал і стан: {home}")
     res = agent.run(stop_after_s=a.minutes * 60 if a.minutes else None)
+    if tg:
+        tg.stop_flag.set()
     srv.shutdown()
     srv.server_close()
     return 3 if res == "restart" else 0

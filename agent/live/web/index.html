@@ -293,7 +293,7 @@ const T = {
   thesis:"Теза",invalidation:"Спростування",critic:"Критик",mode_auto:"діє автоматично (лише зменшує ризик)",mode_shadow:"тіньовий режим",
   next_run:"наступна оцінка",no_ai:"Оцінок ШІ ще немає. Додай ANTHROPIC_API_KEY у Налаштуваннях.",
   cagr:"Річна",maxdd:"Макс. просадка",current:"поточний",news_empty:"Новини завантажуються…",
-  open_pos:"Відкриті позиції",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
+  open_pos:"Відкриті позиції",bnb_off:"комісія не в BNB",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
   t_in:"Вхід",t_out:"Вихід",t_qty:"ETH",ev_time:"Час",ev_msg:"Подія",
   s_general:"Загальне",s_portfolio:"Портфель",s_keys:"Ключі доступу",s_ai:"ШІ-аналітик",s_ai_trader:"ШІ-трейдер (рукав D)",s_strategy:"Стратегія A/B",s_risk:"Ризик-менеджмент",s_control:"Керування агентом",
   save:"Зберегти",restart:"Перезапустити агента",saved:"Збережено. Натисни «Перезапустити агента», щоб застосувати.",
@@ -326,7 +326,7 @@ const T = {
   thesis:"Thesis",invalidation:"Invalidation",critic:"Critic",mode_auto:"applied automatically (risk-down only)",mode_shadow:"shadow mode",
   next_run:"next assessment",no_ai:"No AI assessments yet. Add ANTHROPIC_API_KEY in Settings.",
   cagr:"Annual",maxdd:"Max drawdown",current:"current",news_empty:"Loading news…",
-  open_pos:"Open positions",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
+  open_pos:"Open positions",bnb_off:"fees not in BNB",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
   t_in:"Entry",t_out:"Exit",t_qty:"ETH",ev_time:"Time",ev_msg:"Event",
   s_general:"General",s_portfolio:"Portfolio",s_keys:"Access keys",s_ai:"AI analyst",s_ai_trader:"AI trader (sleeve D)",s_strategy:"Strategy A/B",s_risk:"Risk management",s_control:"Agent control",
   save:"Save",restart:"Restart agent",saved:"Saved. Press “Restart agent” to apply.",
@@ -432,6 +432,8 @@ function renderPulse(){const o=S.ov;if(!o)return;const stale=!o.connected;
     el("span",{class:armed?"blink":""},`⚡ ${t("bots_armed")}: `,el("b",{},armed)),
     pend?el("span",{class:"blink",style:"color:var(--s1)"},`⏳ ${t("pending")}: `,el("b",{},pend)):null,
     o.analyst?el("span",{class:o.analyst.running?"blink":"",style:"color:var(--s7)"},`🧠 ${t("next_ai")}: `,el("b",{id:"nextAi"},"…")):null,
+    o.earn&&parseFloat(o.earn.parked)>0?el("span",{},"💰 Earn: ",el("b",{},o.earn.parked+" $"),o.earn.apr_pct?` · ${o.earn.apr_pct} %`:""):null,
+    o.bnb_fees===true?el("span",{},"🪙 BNB −25 %"):o.bnb_fees===false?el("span",{style:"color:var(--warn)"},"🪙 "+t("bnb_off")):null,
     el("span",{},"👁 "+t("watching")));
   const feed=$("#feed");const seen=S.seenEv||0;feed.textContent="";
   for(const e of (o.recent||[]).slice(0,4)){const row=el("div",{class:e.ts>seen&&seen?"new":"old"},el("time",{},fmtTime(e.ts,false)),el("span",{class:"lvl-"+e.level},e.msg));

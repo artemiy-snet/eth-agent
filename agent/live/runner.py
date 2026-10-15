@@ -287,6 +287,7 @@ class Agent:
         if now >= self.next_reconcile and self.broker.name != "paper":
             self.reconcile()
             self.next_reconcile = now + self.s.reconcile_every_s * 1000
+            earn_step(self.broker, [self], now)
         intents = self.check_stop_files(now)
 
         if self.m.connected and self.m.bid > 0:
@@ -518,6 +519,14 @@ def record_equity(owner, agents: list, now: int) -> None:
         fh.write(f"{now},{total:.2f},{sts[0].get('price')}\n")
 
 
+def earn_step(broker, agents: list, now: int) -> None:
+    """Відсотки на вільні USDT: перекласти надлишок у гнучкий депозит (або повернути, якщо вимкнено)."""
+    em = getattr(broker, "earn", None)
+    if em is None:
+        return
+    em.sweep(sum((b.usdt for a in agents for b in a.state.bots), ZERO), now)
+
+
 def restart_requested(home: Path) -> bool:
     f = home / "RESTART"
     if f.exists():
@@ -578,6 +587,7 @@ class Portfolio:
         if now >= self.next_reconcile and self.broker.name != "paper":
             self.reconcile()
             self.next_reconcile = now + self.s.reconcile_every_s * 1000
+        earn_step(self.broker, self.agents, now)
         for a in self.agents:
             a.tick()
 
@@ -665,9 +675,38 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
                         features=sl.features, name=sl.name) for sl in settings.sleeves]
         obj = Portfolio(agents)
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
+    obj.bnb_fees = None
     if live:
         live_preflight(client, settings, journal, notifier)
+        obj.bnb_fees = bnb_check(client, journal, notifier)
+        from agent.live.earn import EarnManager
+        ec = settings.earn or {}
+        em = EarnManager(client, home, journal, notifier, enabled=bool(ec.get("enabled", False)),
+                         reserve_pct=D(str(ec.get("reserve_pct", 20))))
+        if em.enabled or em.parked > 0:
+            broker.earn = em
     return obj
+
+
+def bnb_check(client, journal, notifier) -> bool | None:
+    """Чи платиться комісія в BNB (−25 %) і чи є BNB на рахунку. Лише повідомляє — налаштування не змінює."""
+    try:
+        on = bool(client.bnb_burn().get("spotBNBBurn"))
+        acc = client.account()
+    except (BinanceError, NetworkError):
+        return None
+    bnb = next((D(b["free"]) for b in acc.get("balances", []) if b["asset"] == "BNB"), ZERO)
+    if not on:
+        msg = ("Комісія НЕ в BNB. Щоб платити на 25 % менше: Binance → Профіль → Налаштування → "
+               "«Оплачувати комісію в BNB» і купи BNB на 3–5 $.")
+    elif bnb <= D("0.002"):
+        msg = "Оплата комісії в BNB увімкнена, але BNB майже немає — купи BNB на 3–5 $, інакше знижки не буде."
+    else:
+        journal.event("INFO", "live", f"Комісія в BNB: увімкнено, BNB {bnb} — знижка 25 %")
+        return True
+    journal.event("WARN", "live", msg)
+    notifier.send("🪙 " + msg)
+    return on
 
 
 def live_preflight(client, settings, journal, notifier) -> None:

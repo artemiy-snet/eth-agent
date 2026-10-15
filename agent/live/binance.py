@@ -143,6 +143,27 @@ class Client:
     def account(self) -> dict:
         return self._request("GET", "/api/v3/account", signed=True)
 
+    def bnb_burn(self) -> dict:
+        """{'spotBNBBurn': bool, ...} — чи платиться комісія в BNB (знижка 25 %)."""
+        return self._request("GET", "/sapi/v1/bnbBurn", signed=True)
+
+    # --- Simple Earn (гнучкий депозит USDT) ------------------------------------------------
+    def earn_products(self, asset: str = "USDT") -> list:
+        return (self._request("GET", "/sapi/v1/simple-earn/flexible/list", {"asset": asset}, signed=True)
+                or {}).get("rows", [])
+
+    def earn_position(self, asset: str = "USDT") -> list:
+        return (self._request("GET", "/sapi/v1/simple-earn/flexible/position", {"asset": asset}, signed=True)
+                or {}).get("rows", [])
+
+    def earn_subscribe(self, product_id: str, amount: str) -> dict:
+        return self._request("POST", "/sapi/v1/simple-earn/flexible/subscribe",
+                             {"productId": product_id, "amount": amount, "autoSubscribe": "false"}, signed=True)
+
+    def earn_redeem(self, product_id: str, amount: str) -> dict:
+        return self._request("POST", "/sapi/v1/simple-earn/flexible/redeem",
+                             {"productId": product_id, "amount": amount, "destAccount": "SPOT"}, signed=True)
+
     def new_order(self, **params) -> dict:
         params.setdefault("newOrderRespType", "FULL")
         return self._request("POST", "/api/v3/order", params, signed=True)
@@ -168,5 +189,11 @@ def fill_from_response(o: dict) -> tuple[Decimal, Decimal, Decimal, Decimal]:
             fee_usdt += c
         elif asset == "ETH":
             fee_eth += c
-        # BNB тощо — комісія поза парою; розбіжність покаже звірка балансів
+        # BNB — див. fee_in("BNB"): переводиться в USDT за ціною BNBUSDT у брокері
     return qty, avg, fee_usdt, fee_eth
+
+
+def fee_in(o: dict, asset: str) -> Decimal:
+    """Комісія в іншій монеті (напр. BNB зі знижкою 25 %)."""
+    return sum((Decimal(f.get("commission", "0")) for f in o.get("fills", []) or []
+                if f.get("commissionAsset") == asset), Decimal(0))

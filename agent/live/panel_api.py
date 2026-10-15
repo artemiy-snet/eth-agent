@@ -267,13 +267,38 @@ def check(kind: str, home: Path, mode: str, given: dict | None = None) -> dict:
                 return {"ok": False, "msg": "токен або chat id не задано"}
             import urllib.parse
             import urllib.request
-            data = urllib.parse.urlencode({"chat_id": sec["TELEGRAM_CHAT_ID"], "text": "✅ ETH-Агент: тест сповіщень"}).encode()
-            urllib.request.urlopen(f"https://api.telegram.org/bot{sec['TELEGRAM_TOKEN']}/sendMessage", data=data,
-                                   timeout=15).read()
+            tok, cid = sec["TELEGRAM_TOKEN"].strip(), sec["TELEGRAM_CHAT_ID"].strip()
+            data = urllib.parse.urlencode({"chat_id": cid, "text": "✅ ETH-Агент: тест сповіщень"}).encode()
+            try:
+                urllib.request.urlopen(f"https://api.telegram.org/bot{tok}/sendMessage", data=data, timeout=15).read()
+            except urllib.error.HTTPError as e:
+                return {"ok": False, "msg": telegram_hint(e.code, e.read().decode(errors="replace"), tok)}
             return {"ok": True, "msg": "тестове повідомлення надіслано"}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "msg": f"{type(e).__name__}: {str(e)[:160]}"}
     return {"ok": False, "msg": "невідома перевірка"}
+
+
+def telegram_hint(code: int, body: str, token: str) -> str:
+    """Пояснення помилки Telegram + chat id із getUpdates, якщо бот уже отримав повідомлення."""
+    import json
+    try:
+        desc = json.loads(body).get("description", "")
+    except ValueError:
+        desc = body[:120]
+    if code == 401 or "Unauthorized" in desc:
+        return f"{desc} → токен невірний: скопіюй його з @BotFather повністю"
+    if "chat not found" in desc or code in (400, 403):
+        found = []
+        try:
+            from agent.live.notify import chat_ids
+            found = [c for c, _ in chat_ids(token)]
+        except Exception:  # noqa: BLE001
+            pass
+        if found:
+            return f"{desc} → правильний chat id: {found[0]} — встав його в поле chat id, Зберегти, Перевірити"
+        return (f"{desc} → відкрий СВОГО бота в Telegram, натисни Start, напиши «привіт» і натисни Перевірити ще раз")
+    return f"HTTP {code}: {desc}"
 
 
 # --- дані для графіків -------------------------------------------------------------------------

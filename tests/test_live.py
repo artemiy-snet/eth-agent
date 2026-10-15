@@ -375,12 +375,12 @@ def test_panel_api_settings_and_csrf(tmp_path):
         code, r = post("/api/settings", {"values": {"risk.max_dd_pct": 500}})
         assert code == 400
         code, r = post("/api/settings", {"values": {"portfolio.preset": "агресивний+ші", "analyst.every_h": 8},
-                                         "secrets": {"ANTHROPIC_API_KEY": "sk-test-1234abcd"}})
+                                         "secrets": {"ANTHROPIC_API_KEY": "dummy-value-abcd"}})
         assert code == 200 and r["ok"]
         sec = (tmp_path / "secrets.env").read_text()
-        assert "ANTHROPIC_API_KEY=sk-test-1234abcd" in sec and oct((tmp_path / "secrets.env").stat().st_mode)[-3:] == "600"
+        assert "ANTHROPIC_API_KEY=dummy-value-abcd" in sec and oct((tmp_path / "secrets.env").stat().st_mode)[-3:] == "600"
         st = _json.loads(urllib.request.urlopen(base + "/api/settings").read())
-        assert st["secrets"]["ANTHROPIC_API_KEY"] == "…abcd" and "sk-test" not in _json.dumps(st)
+        assert st["secrets"]["ANTHROPIC_API_KEY"] == "…abcd" and "dummy-value" not in _json.dumps(st)
         s = load(Path("config.portfolio.yaml"), home=tmp_path)
         assert [x.name for x in s.sleeves] == ["B1", "C", "D"] and s.analyst["every_h"] == 8
         code, r = post("/api/settings", {"values": {"agent.mode": "testnet"}})

@@ -128,11 +128,17 @@ def _run_month(args) -> MonthResult:
     months = _DF["month"]
     mask = (months == month).to_numpy()
     df_m = _DF.loc[mask].reset_index(drop=True)
-    f_m = _FEATS[cfg.features.atr_tf].loc[mask].reset_index(drop=True)
+    f_m = _FEATS[_fkey(cfg)].loc[mask].reset_index(drop=True)
     rep = run_v3(df_m, cfg.v3.to_params(), RiskParams(**cfg.risk.model_dump()),
                  FeatureParams(**cfg.features.model_dump()), cfg.backtest.slippage_pct, feats=f_m)
     return MonthResult(variant.name, month, rep.pnl_usdt, [t.pnl_usdt for t in rep.trades], rep.max_dd_pct,
                        rep.extra.get("kill_switch", "—") != "—")
+
+
+def _fkey(cfg) -> str:
+    """Ключ кешу ознак — УСІ параметри ознак (раніше лише atr_tf: варіанти anchor_h ділили одні ознаки)."""
+    import json
+    return json.dumps(cfg.features.model_dump(), sort_keys=True)
 
 
 def _deep(x):
@@ -150,7 +156,7 @@ def run_grid(df: pd.DataFrame, raw_cfg: dict, variants: list[Variant], workers: 
     feats: dict[str, pd.DataFrame] = {}
     for v in variants:
         cfg = Config.model_validate(apply_overrides(_deep(raw_cfg), v.overrides))
-        tf = cfg.features.atr_tf
+        tf = _fkey(cfg)
         if tf not in feats:
             log(f"ознаки atr_tf={tf} …")
             feats[tf] = compute_features(df, FeatureParams(**cfg.features.model_dump()))

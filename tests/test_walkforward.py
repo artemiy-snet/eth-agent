@@ -68,3 +68,12 @@ def test_daily_grid_has_baseline_and_no_risk_param():
     g = grid_daily()
     assert DAILY_BASELINE in {v.name for v in g}
     assert not any("risk_per_trade" in o for v in g for o in v.overrides)
+
+
+def test_feature_cache_distinguishes_all_feature_params():
+    from agent.config import Config
+    from agent.learning.walkforward import _fkey
+
+    a = Config.model_validate({"features": {"anchor_h": 24}})
+    b = Config.model_validate({"features": {"anchor_h": 72}})
+    assert _fkey(a) != _fkey(b)

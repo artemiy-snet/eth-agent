@@ -622,7 +622,10 @@ class Portfolio:
         for a in self.agents:
             a.balance_diff = diff
         if short:
-            self.j.event("ERROR", "reconcile", f"на біржі менше, ніж думає портфель: {diff:.2f}%")
+            self.j.event("ERROR", "reconcile",
+                         f"на біржі менше, ніж думає портфель: {diff:.1f} % (агент: USDT {need_usdt:.2f}, ETH {need_eth:.5f}; "
+                         f"біржа: USDT {bal.get('USDT', ZERO):.2f}, ETH {bal.get('ETH', ZERO):.5f}). "
+                         f"Поповни USDT або зменш «Live: межа капіталу»")
 
     def tick(self) -> None:
         now = self.agents[0].now()

@@ -112,7 +112,8 @@ class RiskGuard:
         if self.killed:
             return f"kill_switch: {self.kill_reason}"
         if ctx.balance_diff_pct > self.p.max_balance_diff_pct:
-            self.kill(ctx.ts, f"balance_diff {ctx.balance_diff_pct}%")
+            self.kill(ctx.ts, f"на біржі на {ctx.balance_diff_pct:.1f} % менше коштів, ніж розраховує агент "
+                              f"(вільних USDT/ETH не вистачає на бюджет)")
             return "balance_diff"
         if ctx.ts < self.pause_until:
             return f"pause: {self.pause_reason}"

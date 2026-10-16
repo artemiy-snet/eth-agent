@@ -321,9 +321,10 @@ def equity_history(home: Path, mode: str, limit: int = 5000) -> list:
     rows = []
     for line in p.read_text().splitlines()[-limit:]:
         try:
-            t, e, px = line.split(",")
-            rows.append([int(t), float(e), float(px)])
-        except ValueError:
+            parts = line.split(",")
+            rows.append([int(parts[0]), float(parts[1]), float(parts[2])] +
+                        ([float(parts[3])] if len(parts) > 3 else []))
+        except (ValueError, IndexError):
             continue
     return rows
 

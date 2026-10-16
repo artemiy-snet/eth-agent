@@ -642,9 +642,12 @@ function lineChart(host,h,series,opts){const {svg,tip,W,H}=chartFrame(host,h);op
   svg.addEventListener("pointermove",mv);svg.addEventListener("pointerdown",mv);svg.addEventListener("pointerleave",()=>{tip.style.display="none";cross.setAttribute("opacity",0)})}
 
 function drawEquity(){const host=$("#equityChart");if(!host.offsetParent)return;const e=S.equity||[];
-  const pts=e.map(r=>[r[0],r[1]]),px=e.map(r=>[r[0],r[2]]);
+  const px=e.map(r=>[r[0],r[2]]);
   const idx=a=>a.length?a.map(p=>[p[0],p[1]/a[0][1]*100]):[];
-  const series=[{name:t("portfolio"),color:css("--s1"),pts:idx(pts)},{name:t("hold_eth"),color:css("--s2"),pts:idx(px)}];
+  // Портфель — ланцюговий індекс: зміна бюджету (межа капіталу, склад) не малюється як збиток чи прибуток
+  const pf=[];let v=100;for(let i=0;i<e.length;i++){if(i){const a=e[i-1],b=e[i];
+    const r=(a[3]&&b[3])?(b[1]/b[3])/(a[1]/a[3]):(!a[3]&&!b[3])?b[1]/a[1]:1;if(isFinite(r)&&r>0)v*=r}pf.push([e[i][0],v])}
+  const series=[{name:t("portfolio"),color:css("--s1"),pts:pf},{name:t("hold_eth"),color:css("--s2"),pts:idx(px)}];
   lineChart(host,220,series,{base:100,dec:1});
   const lg=$("#equityLegend");lg.textContent="";for(const s of series){const last=s.pts.length?s.pts[s.pts.length-1][1]:null;
     lg.append(el("span",{},el("i",{style:`background:${s.color}`}),`${s.name} ${last==null?"":fmtSigned(last-100,1)+" %"}`))}}

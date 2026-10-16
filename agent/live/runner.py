@@ -547,9 +547,18 @@ def record_equity(owner, agents: list, now: int) -> None:
         return
     owner._next_eq = now + 300_000
     total = sum(float(x.get("equity") or 0) for x in sts)
+    start = sum(float(x.get("start_equity") or 0) for x in sts)     # бюджет: зміна межі капіталу ≠ збиток
     path = owner.home / f"equity_{owner.s.mode}.csv"
+    if not getattr(owner, "_eq_checked", False):        # старий формат без бюджету — у архів, графік з нуля
+        owner._eq_checked = True
+        try:
+            first = path.read_text().splitlines()[0]
+            if first.count(",") < 3:
+                path.replace(path.with_name(f"equity_{owner.s.mode}_old.csv"))
+        except (OSError, IndexError):
+            pass
     with path.open("a") as fh:
-        fh.write(f"{now},{total:.2f},{sts[0].get('price')}\n")
+        fh.write(f"{now},{total:.2f},{sts[0].get('price')},{start:.2f}\n")
 
 
 def earn_step(broker, agents: list, now: int) -> None:

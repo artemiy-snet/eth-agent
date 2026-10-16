@@ -447,6 +447,10 @@ def book_for_analyst(agents: list, journal) -> dict:
               for t in journal.recent_trades(10)]
     out = {"mode": agents[0].s.mode, "sleeves": sleeves, "recent_trades": trades,
            "recent_trades_note": "лише закриті угоди; відкриті позиції — у sleeves[].positions"}
+    em = getattr(agents[0].broker, "earn", None)
+    if em is not None and em.parked > 0:
+        out["earn"] = {"usdt_in_flexible_deposit": f"{em.parked:.2f}",
+                       "note": "USDT агента в гнучкому депозиті Binance; перед кожною купівлею повертаються на спот автоматично"}
     out.update(fresh_warnings(journal.recent_events(300), int(time.time() * 1000)))
     ai = ai_agent(agents)
     if ai is not None and ai.m.bid > 0:

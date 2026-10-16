@@ -201,3 +201,22 @@ def test_notifier_dedupes_same_message():
     finally:
         ur.urlopen = orig
     assert len(sent) == 2
+
+
+def test_budget_change_rebases_flat_bots_and_clears_balance_kill(tmp_path):
+    from agent.live.journal import save_state
+    from agent.strategy import v3
+    st = v3.V3State(bots=[v3.BotV3(bot_id=0, usdt=D(10))])
+    save_state(tmp_path / "state_live_Bm.json", st, {"killed": True, "kill_reason": "balance_diff 9.97%"})
+
+    class A:
+        pass
+    from agent.live.runner import Agent
+    a = A()
+    a.p = type("P", (), {"budget_usdt": D("8.5")})()
+    a.state, a.extra, a.j, a.name = st, {"killed": True, "kill_reason": "balance_diff 9.97%"}, J(), "Bm"
+    a.tag = lambda: "[Bm] "
+    Agent.rebase_budget(a)
+    assert st.bots[0].usdt == D("8.5") and a.extra["killed"] is False and a.extra["budget"] == "8.5"
+    Agent.rebase_budget(a)                         # повторно — нічого не міняє
+    assert len(a.j.ev) == 1

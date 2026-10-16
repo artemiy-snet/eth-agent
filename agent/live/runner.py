@@ -73,6 +73,7 @@ class Agent:
         self.extra.setdefault("stops", {})        # bot_id → coid стоп-ордера на біржі
         self.extra.setdefault("entries", {})      # bot_id → [ts, ціна, вартість]
         self.extra.setdefault("pending", {})      # bot_id → намір у стані UNKNOWN
+        self.rebase_budget()
         if self.extra.get("killed"):
             self.risk.kill(0, self.extra.get("kill_reason", "відновлено зі стану"))
         self.risk.peak_equity = D(self.extra.get("peak_equity", "0"))
@@ -86,6 +87,28 @@ class Agent:
         self.ai_signal = None        # перевірена ідея ШІ для рукава ai — діє один крок
         self.order_backoff_until = 0  # пауза після відмови біржі
         self.extra.setdefault("ai_pnls", [])
+
+    def rebase_budget(self) -> None:
+        """Змінили бюджет у панелі (межа капіталу, склад) — боти без позиції переходять на новий бюджет.
+        Інакше збережений стан тримає стару суму, і звірка з біржею бачить «нестачу» → kill switch."""
+        new = D(self.p.budget_usdt)
+        legacy = "budget" not in self.extra               # стан зі старих версій — бюджет не збережено
+        old = D(self.extra.get("budget", "0"))
+        self.extra["budget"] = str(new)
+        if not legacy and old == new:
+            return
+        moved = 0
+        for b in self.state.bots:
+            if b.phase is v3.Phase.FLAT and b.eth * (b.entry_px or D(1)) < D(1) and b.usdt != new:
+                old = b.usdt if legacy else old
+                b.usdt = new
+                moved += 1
+        if moved:
+            self.extra["peak_equity"] = "0"                 # нова база — просадка рахується від неї
+            why = str(self.extra.get("kill_reason", ""))
+            if self.extra.get("killed") and ("balance_diff" in why or "біржі" in why):
+                self.extra.update(killed=False, kill_reason="")   # причина kill — стара сума; звірка перевірить знову
+            self.j.event("INFO", "start", f"{self.tag()}бюджет змінено: {old} → {new} USDT на бота ({moved} бот.)")
 
     # --- дані ----------------------------------------------------------------------------
     def now(self) -> int:

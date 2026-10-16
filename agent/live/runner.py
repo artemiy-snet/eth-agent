@@ -368,12 +368,14 @@ class Agent:
         self.j.event("INFO", "start", f"агент запущено, режим {self.s.mode}")
         self.n.send(f"▶️ ETH-Агент запущено, режим {self.s.mode}")
         start_notes(self.j, self.analyst)
+        outage_note(self)
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
                 ai_step(self, [self], self.now())
                 self.tick()
                 record_equity(self, [self], self.now())
+                heartbeat_ping(self, self.now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -527,6 +529,42 @@ def earn_step(broker, agents: list, now: int) -> None:
     em.sweep(sum((b.usdt for a in agents for b in a.state.bots), ZERO), now)
 
 
+def outage_note(owner, now_ms: int | None = None) -> None:
+    """Після старту: якщо агент не працював > 15 хв (сів телефон, перезавантаження) — сказати, скільки."""
+    now_ms = now_ms or int(time.time() * 1000)
+    try:
+        lines = (owner.home / f"equity_{owner.s.mode}.csv").read_text().strip().splitlines()
+        last = int(lines[-1].split(",")[0])
+    except (OSError, ValueError, IndexError):
+        return
+    gap_min = (now_ms - last) // 60_000
+    if gap_min < 15:
+        return
+    since = time.strftime("%d.%m %H:%M", time.localtime(last / 1000))
+    msg = (f"Агент не працював {gap_min // 60} год {gap_min % 60} хв (з {since}). Стан відновлено, "
+           f"позиції звіряються з біржею. Щоб не повторилось: телефон на зарядці, автозапуск — scripts/autostart.sh")
+    owner.j.event("WARN", "start", msg)
+    owner.n.send("⚠️ " + msg)
+
+
+def heartbeat_ping(owner, now: int) -> None:
+    """Раз на 5 хв — пінг на HEALTHCHECK_URL (напр. healthchecks.io): якщо пінги зникнуть, сервіс сам напише
+    в Telegram/на пошту, навіть коли телефон вимкнений. У фоні — торговий цикл не чекає."""
+    url = getattr(owner, "healthcheck_url", "")
+    if not url or now < getattr(owner, "_next_hc", 0):
+        return
+    owner._next_hc = now + 300_000
+
+    def ping():
+        import urllib.request
+        try:
+            urllib.request.urlopen(url, timeout=10).read()
+        except Exception:  # noqa: BLE001
+            pass
+    import threading
+    threading.Thread(target=ping, daemon=True).start()
+
+
 def restart_requested(home: Path) -> bool:
     f = home / "RESTART"
     if f.exists():
@@ -601,12 +639,14 @@ class Portfolio:
         self.j.event("INFO", "start", f"портфель запущено ({names}), режим {self.s.mode}")
         self.n.send(f"▶️ ETH-Агент: портфель {names}, режим {self.s.mode}")
         start_notes(self.j, self.analyst)
+        outage_note(self)
         while t_end is None or time.time() < t_end:
             t0 = time.time()
             try:
                 ai_step(self, self.agents, self.agents[0].now())
                 self.tick()
                 record_equity(self, self.agents, self.agents[0].now())
+                heartbeat_ping(self, self.agents[0].now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -631,7 +671,7 @@ def read_secrets(home: Path) -> dict[str, str]:
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
     for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
-              "ANTHROPIC_WORKSPACE_ID"):
+              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out
@@ -676,6 +716,7 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
         obj = Portfolio(agents)
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
     obj.bnb_fees = None
+    obj.healthcheck_url = sec.get("HEALTHCHECK_URL", "") if sec.get("HEALTHCHECK_URL", "").startswith("https://") else ""
     if live:
         live_preflight(client, settings, journal, notifier)
         obj.bnb_fees = bnb_check(client, journal, notifier)

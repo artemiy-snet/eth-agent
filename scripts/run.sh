@@ -12,8 +12,10 @@ ARGS=()
 while true; do
   python -m agent.cli live "${ARGS[@]}" --config "$CONFIG"
   code=$?
-  [ "$code" -eq 3 ] || exit "$code"     # 3 — перезапуск з панелі
+  case "$code" in
+    0|2|4|130) exit "$code" ;;           # штатна зупинка / live не підтверджено / порт зайнятий / CTRL+C
+    3) echo "Перезапуск з новими налаштуваннями…"; sleep 2 ;;
+    *) echo "Агент упав (код $code) — автоперезапуск через 15 с. Зупинити: CTRL+C"; sleep 15 ;;
+  esac
   ARGS=()                                # після перезапуску режим береться з налаштувань панелі
-  echo "Перезапуск з новими налаштуваннями…"
-  sleep 2
 done

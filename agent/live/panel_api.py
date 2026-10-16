@@ -20,7 +20,7 @@ from agent.features import calendar
 from agent.strategy.sleeves import BASE_PRESETS, PRESETS, SLEEVES
 
 SECRET_KEYS = ["BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "ANTHROPIC_API_KEY", "ANTHROPIC_WORKSPACE_ID", "TELEGRAM_TOKEN",
-               "TELEGRAM_CHAT_ID"]
+               "TELEGRAM_CHAT_ID", "HEALTHCHECK_URL"]
 LIVE_PRESETS = BASE_PRESETS + [k for k in PRESETS if "+ші" in k]
 
 # Очікування за бектестом 7 років (docs/strategies.md) — для підказок у виборі пресета.

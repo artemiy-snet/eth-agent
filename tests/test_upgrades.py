@@ -171,3 +171,17 @@ def test_broker_balances_count_parked_usdt(tmp_path):
     assert b.balances()["USDT"] == D(10)
     assert isinstance(b.balances()["ETH"], Decimal)
     assert Path(tmp_path).exists()
+
+
+def test_outage_note_reports_gap(tmp_path):
+    import time as _t
+    from types import SimpleNamespace
+    from agent.live.runner import outage_note
+    now = int(_t.time() * 1000)
+    (tmp_path / "equity_live.csv").write_text(f"{now - 7 * 3_600_000},20.0,2450\n")
+    o = SimpleNamespace(home=tmp_path, s=SimpleNamespace(mode="live"), j=J(), n=N())
+    outage_note(o, now)
+    assert "7 год 0 хв" in o.n.sent[0]
+    o2 = SimpleNamespace(home=tmp_path, s=SimpleNamespace(mode="live"), j=J(), n=N())
+    outage_note(o2, now - 7 * 3_600_000 + 60_000)            # перерва 1 хв — мовчимо
+    assert not o2.n.sent

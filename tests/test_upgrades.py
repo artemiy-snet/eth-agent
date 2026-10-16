@@ -185,3 +185,19 @@ def test_outage_note_reports_gap(tmp_path):
     o2 = SimpleNamespace(home=tmp_path, s=SimpleNamespace(mode="live"), j=J(), n=N())
     outage_note(o2, now - 7 * 3_600_000 + 60_000)            # перерва 1 хв — мовчимо
     assert not o2.n.sent
+
+
+def test_notifier_dedupes_same_message():
+    from agent.live.notify import Notifier
+    n = Notifier("t", "1")
+    sent = []
+    import urllib.request as ur
+    orig = ur.urlopen
+    ur.urlopen = lambda *a, **k: sent.append(1) or type("R", (), {"read": lambda s: b""})()
+    try:
+        for _ in range(3):
+            n.send("⛔ KILL SWITCH: STOP_FLATTEN")
+        n.send("інше")
+    finally:
+        ur.urlopen = orig
+    assert len(sent) == 2

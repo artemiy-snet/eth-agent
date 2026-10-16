@@ -159,9 +159,13 @@ class Agent:
                 self.j.event("WARN", "stop", f"стоп на біржі не поставлено для бота {fill.bot_id}; стоп веде агент")
         else:
             reason = reason or b.pending_reason or "?"
+            held = b.eth
             self.strat.on_fill(self.state, fill)
             ets, epx, cost = self.extra["entries"].pop(key, [fill.ts, fill.price, ZERO])
-            pnl = fill.qty * fill.price - fill.fee_quote - D(cost)
+            # Продати можна лише кратне кроку 0,0001 ETH: залишок («пил») лишається на рахунку і в капіталі бота,
+            # тому в PnL угоди йде лише частка вартості входу, що відповідає проданому.
+            frac = min(D(1), fill.qty / held) if held > 0 else D(1)
+            pnl = fill.qty * fill.price - fill.fee_quote - D(cost) * frac
             self.j.trade(fill.bot_id, int(ets), fill.ts, epx, fill.price, fill.qty, pnl, f"{self.tag()}{reason}".strip())
             self.risk.on_trade_closed(fill.ts, pnl)
             if getattr(self.strat, "__name__", "").endswith("ai_trader"):

@@ -16,6 +16,10 @@ class Notifier:
         print(time.strftime("%H:%M:%S"), text, flush=True)
         if not (self.token and self.chat):
             return
+        now = time.time()                    # однакове повідомлення від кількох рукавів — один раз
+        if text == getattr(self, "_last", None) and now - getattr(self, "_last_ts", 0) < 120:
+            return
+        self._last, self._last_ts = text, now
         data = urllib.parse.urlencode({"chat_id": self.chat, "text": text}).encode()
         try:
             urllib.request.urlopen(f"https://api.telegram.org/bot{self.token}/sendMessage", data=data, timeout=10).read()

@@ -51,6 +51,12 @@ jobs:
           mkdir -p reports
           eth-agent grid --start ${{ steps.args.outputs.start }} --end ${{ steps.args.outputs.end }} --summary-md reports/grid.md
           cat reports/grid.md >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY'
+          t = open("reports/grid.md", encoding="utf-8").read()
+          for i, part in enumerate(t.split("## Сітковий бот")[1:]):
+              rows = [l for l in part.splitlines() if l.startswith("| ") or l.startswith("Капітал")]
+              print(f"::notice title=Сітка {i + 1}::" + "%0A".join(rows)[:3900])
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: grid-report

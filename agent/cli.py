@@ -106,6 +106,19 @@ def _cmd_walkforward(a) -> int:
     return 0
 
 
+def _cmd_grid(a) -> int:
+    from agent.backtest import grid
+    from agent.data import klines
+    df = klines.load(a.pair.upper(), a.start, a.end, Path(a.data))
+    md = f"## {a.pair.upper()}\n\n"
+    for fee in (0.1, 0.075):
+        md += grid.report_md(grid.run_all(df, fee_pct=fee), a.start, a.end, fee) + "\n"
+    print(md)
+    if a.summary_md:
+        Path(a.summary_md).write_text(md, encoding="utf-8")
+    return 0
+
+
 def _cmd_portfolio(a) -> int:
     import os
 
@@ -274,6 +287,12 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--set", action="append", default=[], metavar="КЛЮЧ=ЗНАЧЕННЯ")
     w.add_argument("--summary-md")
 
+    gr = sub.add_parser("grid", help="бектест сіткового бота (для порівняння)")
+    gr.add_argument("--start", required=True)
+    gr.add_argument("--end", required=True)
+    gr.add_argument("--pair", default="ETHUSDT")
+    gr.add_argument("--summary-md")
+
     pp = sub.add_parser("portfolio", help="портфельний бектест (суміш стратегій)")
     pp.add_argument("--config", default="config.yaml")
     pp.add_argument("--start", required=True)
@@ -298,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
             "walkforward": _cmd_walkforward, "live": _cmd_live,
-            "portfolio": _cmd_portfolio, "ai-review": _cmd_ai_review}[a.cmd](a)
+            "portfolio": _cmd_portfolio, "grid": _cmd_grid, "ai-review": _cmd_ai_review}[a.cmd](a)
 
 
 if __name__ == "__main__":

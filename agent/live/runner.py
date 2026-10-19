@@ -221,8 +221,14 @@ class Agent:
             first = self.order_backoff_until <= it.ts
             self.order_backoff_until = it.ts + 5 * 60_000
             if first:
-                self.j.event("WARN", "order", f"{self.tag()}ордер відхилено: {r.detail} · наступна спроба через 5 хв")
-                self.n.send(f"⚠️ [{self.s.mode}] {self.tag()}ордер відхилено: {str(r.detail)[:300]}. Повтор через 5 хв.")
+                detail = str(r.detail)
+                if "-2015" in detail:                    # найчастіше — змінилась IP-адреса інтернету
+                    ip = public_ip()
+                    detail = (f"Binance не прийняв ключ (-2015). Найімовірніше змінилась IP-адреса інтернету"
+                              f"{': зараз ' + ip if ip else ''}. Додай її в ключ: Binance → Керування API → "
+                              f"Редагувати → Обмеження IP. Агент повторює кожні 5 хв.")
+                self.j.event("WARN", "order", f"{self.tag()}ордер відхилено: {detail} · наступна спроба через 5 хв")
+                self.n.send(f"⚠️ [{self.s.mode}] {self.tag()}ордер відхилено: {detail[:400]}")
 
     def resolve_pending(self, now: int) -> None:
         for key, p in list(self.extra["pending"].items()):
@@ -567,6 +573,20 @@ def earn_step(broker, agents: list, now: int) -> None:
     if em is None:
         return
     em.sweep(sum((b.usdt for a in agents for b in a.state.bots), ZERO), now)
+
+
+def public_ip() -> str:
+    """Поточна зовнішня IPv4-адреса (для підказки, яку IP додати в ключ Binance)."""
+    import urllib.request
+    for url in ("https://api4.ipify.org", "https://ipv4.icanhazip.com"):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                ip = r.read().decode().strip()
+                if ip.count(".") == 3:
+                    return ip
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
 
 
 def outage_note(owner, now_ms: int | None = None) -> None:

@@ -220,3 +220,15 @@ def test_budget_change_rebases_flat_bots_and_clears_balance_kill(tmp_path):
     assert st.bots[0].usdt == D("8.5") and a.extra["killed"] is False and a.extra["budget"] == "8.5"
     Agent.rebase_budget(a)                         # повторно — нічого не міняє
     assert len(a.j.ev) == 1
+
+
+def test_earn_ip_error_is_temporary(tmp_path):
+    c = EarnClient()
+
+    def deny(asset):
+        raise BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
+    c.earn_products = deny
+    m = em(tmp_path, c)
+    m.sweep(D(20), 0)
+    assert not m.disabled and not m.n.sent       # не вимкнено назавжди, без спаму
+    assert m.next_sweep > 10**12                  # повтор через годину

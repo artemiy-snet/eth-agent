@@ -48,6 +48,11 @@ class EarnManager:
                 "apr_pct": None if self.apr_pct is None else f"{self.apr_pct:.2f}", "disabled": self.disabled}
 
     def _fail(self, what: str, e: Exception) -> None:
+        if isinstance(e, BinanceError) and e.code in (-2015, -1021, -1003):
+            # ключ/IP/годинник/ліміт — тимчасове (напр. змінилась IP-адреса); не вимикаємо Earn назавжди
+            self.next_sweep = max(self.next_sweep, int(time.time() * 1000) + 3_600_000)
+            self.j.event("WARN", "earn", f"Earn: {what} — {str(e)[:160]}; повтор через годину")
+            return
         if isinstance(e, BinanceError):
             first = not self.disabled
             self.disabled = f"{what}: {e}"[:300]

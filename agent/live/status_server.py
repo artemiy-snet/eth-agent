@@ -138,6 +138,7 @@ def overview(agent) -> dict:
         "recent": [e for e in api.events(agent.j, 20) if e["kind"] not in ("ai_review",)][:5],
         "earn": (lambda em: em.status() if em else None)(getattr(getattr(agent, "broker", None), "earn", None)),
         "bnb_fees": getattr(agent, "bnb_fees", None),
+        "key_error": getattr(getattr(agent, "broker", None), "auth_error", None),
     }
 
 

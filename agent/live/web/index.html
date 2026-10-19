@@ -286,7 +286,7 @@ const T = {
   buy:"Купівля",sell:"Продаж",entry:"Вхід",stop:"Стоп",take:"Тейк",level:"Рівень",pnl:"PnL",open:"відкрита",
   o:"Відкр.",h:"Макс.",l:"Мін.",c:"Закр.",portfolio:"Портфель",hold_eth:"Тримати ETH",
   st_working:"працює",st_killed:"KILL SWITCH",entries:"входи",open_gate:"відкрито",flat:"в USDT",in_eth:"в ETH",positions:"Позиції",
-  kill_alert:"Kill switch: нові входи заблоковано. Стопи працюють.",stop_alert:"STOP: нові входи заборонено вручну.",
+  key_alert:"Binance не приймає ключ з {since}: змінилась IP-адреса. Нова: {ip} — додай у ключ (Binance → Керування API → Обмеження IP). Торгівля стоїть.",kill_alert:"Kill switch: нові входи заблоковано. Стопи працюють.",stop_alert:"STOP: нові входи заборонено вручну.",
   ai_brake_alert:"ШІ гальмує нові входи",anom:"ШІ помітив",nodata:"Даних ще немає — агент збирає їх",
   confidence:"впевненість",facts:"Факти",events_ahead:"Події попереду",impact:"Вплив на стратегію",positions_review:"Контроль позицій",
   anomalies:"Аномалії",proposal:"Ідея ШІ-трейдера",approved:"схвалено кодом і критиком",rejected:"відхилено",stage:"етап",
@@ -319,7 +319,7 @@ const T = {
   buy:"Buy",sell:"Sell",entry:"Entry",stop:"Stop",take:"Take",level:"Level",pnl:"PnL",open:"open",
   o:"Open",h:"High",l:"Low",c:"Close",portfolio:"Portfolio",hold_eth:"Hold ETH",
   st_working:"running",st_killed:"KILL SWITCH",entries:"entries",open_gate:"open",flat:"in USDT",in_eth:"in ETH",positions:"Positions",
-  kill_alert:"Kill switch: new entries blocked. Stops stay active.",stop_alert:"STOP: new entries blocked manually.",
+  key_alert:"Binance rejects the key since {since}: IP address changed. New: {ip} — add it to the key (Binance → API Management → IP restriction). Trading paused.",kill_alert:"Kill switch: new entries blocked. Stops stay active.",stop_alert:"STOP: new entries blocked manually.",
   ai_brake_alert:"AI is braking new entries",anom:"AI noticed",nodata:"No data yet — the agent is collecting it",
   confidence:"confidence",facts:"Facts",events_ahead:"Events ahead",impact:"Impact on strategy",positions_review:"Position check",
   anomalies:"Anomalies",proposal:"AI trader idea",approved:"approved by code and critic",rejected:"rejected",stage:"stage",
@@ -451,6 +451,8 @@ function renderOverview(){const o=S.ov;if(!o)return;
   renderPulse();
   // alerts
   const al=$("#alerts");al.textContent="";
+  if(o.key_error)al.append(el("div",{class:"alert crit blink",role:"alert"},el("b",{},"⛔"),
+    t("key_alert",{ip:o.key_error.ip||"…",since:fmtTime(o.key_error.since)})));
   if(o.killed)al.append(el("div",{class:"alert crit",role:"alert"},el("b",{},"⛔"),t("kill_alert")));
   else if(o.stop_file)al.append(el("div",{class:"alert crit"},el("b",{},"■"),t("stop_alert")));
   if(o.analyst&&o.analyst.active_regime!=="NORMAL")al.append(el("div",{class:"alert"},el("b",{},"🧠"),

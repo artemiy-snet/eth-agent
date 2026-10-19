@@ -16,6 +16,9 @@ from pathlib import Path
 
 COMMANDS = [
     ("status", "стан: капітал, позиції, ШІ"),
+    ("chart", "графік ETH: /chart, /chart 7d, /chart 30d"),
+    ("equity", "графік капіталу проти ETH"),
+    ("ai", "остання оцінка ШІ-аналітика"),
     ("trades", "останні угоди"),
     ("stop", "заборонити нові покупки"),
     ("flatten", "продати все і зупинитись"),
@@ -80,11 +83,86 @@ def trades_text(rows: list) -> str:
     return "\n".join(out)
 
 
+def chart_photo(arg: str, candles, ov: dict, trades: list):
+    """(png, підпис) графіка ціни ETH з входами/стопами відкритих позицій і угодами за період."""
+    from agent.live import chart_png as cp
+    arg = (arg or "24h").lower()
+    tf, n, label = ("1h", 168, "7 днів") if arg.startswith("7") else \
+                   ("1h", 720, "30 днів") if arg.startswith("30") else ("1m", 1440, "24 год")
+    rows = (candles(tf) or [])[-n:]
+    if len(rows) < 2:
+        return None, "Даних для графіка ще немає — агент щойно запустився."
+    pts = cp.downsample([(r[0], r[4]) for r in rows])
+    t0 = rows[0][0]
+    hl, mk, notes = [], [], []
+    for s in ov.get("sleeves") or []:
+        for b in s.get("bots") or []:
+            if b.get("phase") == "FLAT" or not float(b.get("eth") or 0):
+                continue
+            if b.get("entry"):
+                hl.append((float(b["entry"]), cp.COLORS["entry"], True))
+                notes.append(f"вхід {s.get('sleeve')} {_f(b['entry'])}")
+            if b.get("stop"):
+                hl.append((float(b["stop"]), cp.COLORS["stop"], True))
+                notes.append(f"стоп {_f(b['stop'])}")
+            if b.get("entry_ts") and int(b["entry_ts"]) >= t0:
+                mk.append((int(b["entry_ts"]), float(b["entry"]), cp.COLORS["buy"], True))
+    for t in trades:
+        if int(t.get("entry_ts") or 0) >= t0:
+            mk.append((int(t["entry_ts"]), float(t["entry_px"]), cp.COLORS["buy"], True))
+        if int(t.get("exit_ts") or 0) >= t0:
+            mk.append((int(t["exit_ts"]), float(t["exit_px"]), cp.COLORS["sell"], False))
+    png = cp.chart([(pts, cp.COLORS["eth"])], hl, mk)
+    first, last = rows[0][4], rows[-1][4]
+    lo, hi = min(r[3] for r in rows), max(r[2] for r in rows)
+    cap = (f"ETH за {label}: {_f(first)} → {_f(last)} ({(last / first - 1) * 100:+.1f} %)\n"
+           f"мін {_f(lo)} · макс {_f(hi)}" + ("\n" + " · ".join(notes) if notes else "") +
+           "\n🟢 пунктир — вхід, 🔴 — стоп; ▲ купівля, ▼ продаж")
+    return png, cap
+
+
+def equity_photo(rows: list):
+    """(png, підпис) капіталу портфеля проти ETH (індекс, старт = 100; зміна бюджету не рахується збитком)."""
+    from agent.live import chart_png as cp
+    if len(rows) < 2:
+        return None, "Історії капіталу ще мало — точки пишуться раз на 5 хв."
+    pf, v = [], 100.0
+    for i, r in enumerate(rows):
+        if i:
+            a = rows[i - 1]
+            if len(a) > 3 and len(r) > 3 and a[3] and r[3]:
+                k = (r[1] / r[3]) / (a[1] / a[3])
+            elif len(a) <= 3 and len(r) <= 3:
+                k = r[1] / a[1] if a[1] else 1
+            else:
+                k = 1
+            v *= k if k > 0 else 1
+        pf.append((r[0], v))
+    eth = [(r[0], r[2] / rows[0][2] * 100) for r in rows]
+    png = cp.chart([(cp.downsample(eth), cp.COLORS["eth"]), (cp.downsample(pf), cp.COLORS["pf"])],
+                   [(100.0, cp.COLORS["grey"], True)])
+    return png, (f"🔵 Портфель {pf[-1][1] - 100:+.1f} %  ·  🟠 Тримати ETH {eth[-1][1] - 100:+.1f} %\n"
+                 f"(індекс від старту = 100; сіра лінія — старт)")
+
+
+def ai_text(home: Path) -> str:
+    try:
+        r = json.loads((home / "ai_news.json").read_text())
+    except (OSError, ValueError):
+        return "ШІ-аналітик ще не робив оцінок."
+    a = r.get("assessment") or r
+    facts = "\n".join("• " + str(x) for x in (a.get("facts") or [])[:3])
+    when = time.strftime("%d.%m %H:%M", time.localtime(int(r.get("ts") or 0) / 1000)) if r.get("ts") else ""
+    return (f"🧠 {a.get('news_regime', '?')} (впевненість {a.get('confidence', '?')}) {when}\n{facts}\n"
+            f"Вплив: {str(a.get('impact_on_strategy', ''))[:400]}")
+
+
 class TelegramControl:
     def __init__(self, token: str, chat_id: str, home: Path, overview, trades, journal=None,
-                 api: str = "https://api.telegram.org"):
+                 api: str = "https://api.telegram.org", candles=None, equity=None):
         self.token, self.chat, self.home = token.strip(), str(chat_id).strip(), home
         self.overview, self.trades, self.j, self.api = overview, trades, journal, api
+        self.candles, self.equity = candles or (lambda tf: []), equity or (lambda: [])
         self.offset = 0
         self.flatten_asked = 0.0
         self.stop_flag = threading.Event()
@@ -101,6 +179,21 @@ class TelegramControl:
         except Exception:  # noqa: BLE001
             pass
 
+    def send_photo(self, png: bytes, caption: str = "") -> None:
+        b = "----ethagent" + str(int(time.time() * 1000))
+        parts = []
+        for k, v in (("chat_id", self.chat), ("caption", caption[:1000])):
+            parts.append(f'--{b}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+        parts.append(f'--{b}\r\nContent-Disposition: form-data; name="photo"; filename="chart.png"\r\n'
+                     f'Content-Type: image/png\r\n\r\n'.encode() + png + b"\r\n")
+        body = b"".join(parts) + f"--{b}--\r\n".encode()
+        req = urllib.request.Request(f"{self.api}/bot{self.token}/sendPhoto", data=body,
+                                     headers={"Content-Type": f"multipart/form-data; boundary={b}"})
+        try:
+            urllib.request.urlopen(req, timeout=30).read()
+        except Exception:  # noqa: BLE001
+            self.send(caption or "Не вдалося надіслати графік.")
+
     def skip_backlog(self) -> None:
         """Повідомлення, надіслані поки агент не працював, не виконуються."""
         res = self._call("getUpdates", {"offset": -1, "timeout": 0}, timeout=15) or []
@@ -116,6 +209,15 @@ class TelegramControl:
             return status_text(self.overview())
         if cmd in ("trades", "угоди"):
             return trades_text(self.trades())
+        if cmd in ("chart", "графік"):
+            arg = (text or "").split()[1] if len((text or "").split()) > 1 else ""
+            png, cap = chart_photo(arg, self.candles, self.overview(), self.trades())
+            return (png, cap) if png else cap
+        if cmd in ("equity", "капітал"):
+            png, cap = equity_photo(self.equity())
+            return (png, cap) if png else cap
+        if cmd == "ai":
+            return ai_text(self.home)
         if cmd == "stop":
             (self.home / "STOP").touch()
             self._log("STOP з Telegram")
@@ -151,7 +253,11 @@ class TelegramControl:
             m = u.get("message") or {}
             if str((m.get("chat") or {}).get("id")) != self.chat:
                 continue                                   # чужий чат — ігнор
-            self.send(self.handle(m.get("text", "")))
+            out = self.handle(m.get("text", ""))
+            if isinstance(out, tuple):
+                self.send_photo(*out)
+            else:
+                self.send(out)
 
     def run(self) -> None:
         try:
@@ -179,7 +285,9 @@ def start(agent, sec: dict, home: Path):
         return None
     from agent.live import panel_api as api
     from agent.live.status_server import overview
+    mode = getattr(agent, "agents", [agent])[0].s.mode
     tc = TelegramControl(sec["TELEGRAM_TOKEN"], sec["TELEGRAM_CHAT_ID"], home,
-                         overview=lambda: overview(agent), trades=lambda: api.trades(agent.j, 5), journal=agent.j)
+                         overview=lambda: overview(agent), trades=lambda: api.trades(agent.j, 50), journal=agent.j,
+                         candles=lambda tf: api.candles(agent, tf), equity=lambda: api.equity_history(home, mode))
     tc.start()
     return tc

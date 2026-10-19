@@ -232,3 +232,59 @@ def test_earn_ip_error_is_temporary(tmp_path):
     m.sweep(D(20), 0)
     assert not m.disabled and not m.n.sent       # не вимкнено назавжди, без спаму
     assert m.next_sweep > 10**12                  # повтор через годину
+
+
+def test_key_rejection_flag_set_and_cleared(monkeypatch, tmp_path):
+    from agent.live import runner
+
+    class C:
+        bad = True
+
+        def account(self):
+            if self.bad:
+                raise BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
+            return {"balances": []}
+    c = C()
+    b = ExchangeBroker(c, "ETHUSDT", ETHUSDT_DEFAULT, "live", sleep=lambda *_: None)
+    assert b.balances() is None and b.auth_error
+    monkeypatch.setattr(runner, "public_ip", lambda: "1.2.3.4")
+    j, n = J(), N()
+    runner.auth_check(b, j, n)
+    runner.auth_check(b, j, n)                     # друге — без повтору
+    assert len(n.sent) == 1 and "1.2.3.4" in n.sent[0]
+    c.bad = False
+    b.balances()
+    assert b.auth_error is None
+
+
+def test_key_rejection_flag_and_single_alert(monkeypatch):
+    from agent.live import runner
+
+    class C:
+        bad = True
+
+        def account(self):
+            if self.bad:
+                raise BinanceError(401, -2015, "Invalid API-key, IP, or permissions for action.")
+            return {"balances": []}
+    c = C()
+    b = ExchangeBroker(c, "ETHUSDT", ETHUSDT_DEFAULT, "live", sleep=lambda *_: None)
+    assert b.balances() is None and b.auth_error
+    monkeypatch.setattr(runner, "public_ip", lambda: "1.2.3.4")
+    j, n = J(), N()
+    runner.auth_check(b, j, n)
+    runner.auth_check(b, j, n)
+    assert len(n.sent) == 1 and "1.2.3.4" in n.sent[0]
+    c.bad = False
+    b.balances()
+    assert b.auth_error is None
+
+
+def test_telegram_chart_returns_png(tmp_path):
+    rows = [(1_000_000 + i * 60_000, 0, 101 + i % 7, 99 - i % 5, 100 + (i % 13) / 3) for i in range(300)]
+    t = TelegramControl("t", "1", tmp_path, overview=lambda: OV, trades=lambda: [], candles=lambda tf: rows,
+                        equity=lambda: [[i, 17 + i / 100, 2400 + i, 17] for i in range(50)])
+    png, cap = t.handle("/chart")
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and "ETH за 24 год" in cap
+    png, cap = t.handle("/equity")
+    assert png[:4] == b"\x89PNG" and "Портфель" in cap

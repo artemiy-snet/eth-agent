@@ -77,6 +77,7 @@ class ExchangeBroker:
         self.buffer = stop_buffer_pct / HUNDRED
         self.attempts, self.sleep = resolve_attempts, sleep
         self.prefix = "eat" if mode == "testnet" else "eal"
+        self.auth_error = None           # {"since", "ip"} коли Binance не приймає ключ (-2015)
         self.earn = None                 # EarnManager (гнучкий депозит для вільних USDT), див. runner.build
 
     def bnb_price(self) -> Decimal:
@@ -118,6 +119,8 @@ class ExchangeBroker:
         try:
             o = self.c.new_order(**params)
         except BinanceError as e:
+            if e.code == -2015:
+                self.auth_error = self.auth_error or {"since": int(time.time() * 1000), "ip": ""}
             return ExecResult("REJECTED", coid, detail=str(e))
         except NetworkError as e:
             return self.resolve(coid, it, ts, first_error=str(e))
@@ -194,8 +197,13 @@ class ExchangeBroker:
     def balances(self) -> dict[str, Decimal] | None:
         try:
             acc = self.c.account()
-        except (BinanceError, NetworkError):
+        except BinanceError as e:
+            if e.code == -2015:                     # ключ не прийнято (найчастіше — змінилась IP)
+                self.auth_error = self.auth_error or {"since": int(time.time() * 1000), "ip": ""}
             return None
+        except NetworkError:
+            return None
+        self.auth_error = None
         out = {b["asset"]: Decimal(b["free"]) + Decimal(b["locked"]) for b in acc.get("balances", [])
                if b["asset"] in ("ETH", "USDT", "BNB")}
         if self.earn is not None:        # USDT агента, що лежать у гнучкому депозиті, теж його

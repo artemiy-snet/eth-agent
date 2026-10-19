@@ -222,11 +222,9 @@ class Agent:
             self.order_backoff_until = it.ts + 5 * 60_000
             if first:
                 detail = str(r.detail)
-                if "-2015" in detail:                    # найчастіше — змінилась IP-адреса інтернету
-                    ip = public_ip()
-                    detail = (f"Binance не прийняв ключ (-2015). Найімовірніше змінилась IP-адреса інтернету"
-                              f"{': зараз ' + ip if ip else ''}. Додай її в ключ: Binance → Керування API → "
-                              f"Редагувати → Обмеження IP. Агент повторює кожні 5 хв.")
+                if "-2015" in detail:                    # змінилась IP — окреме сповіщення з адресою (auth_check)
+                    auth_check(self.broker, self.j, self.n)
+                    detail = "Binance не прийняв ключ (-2015) — див. повідомлення про IP"
                 self.j.event("WARN", "order", f"{self.tag()}ордер відхилено: {detail} · наступна спроба через 5 хв")
                 self.n.send(f"⚠️ [{self.s.mode}] {self.tag()}ордер відхилено: {detail[:400]}")
 
@@ -321,6 +319,7 @@ class Agent:
             self.reconcile()
             self.next_reconcile = now + self.s.reconcile_every_s * 1000
             earn_step(self.broker, [self], now)
+            auth_check(self.broker, self.j, self.n)
         intents = self.check_stop_files(now)
 
         if self.m.connected and self.m.bid > 0:
@@ -575,6 +574,18 @@ def earn_step(broker, agents: list, now: int) -> None:
     em.sweep(sum((b.usdt for a in agents for b in a.state.bots), ZERO), now)
 
 
+def auth_check(broker, j, n) -> None:
+    """Binance не приймає ключ → один раз дізнатись поточну IP і повідомити (панель блимає червоним)."""
+    ae = getattr(broker, "auth_error", None)
+    if not ae or ae.get("ip"):
+        return
+    ae["ip"] = public_ip() or "?"
+    msg = (f"Binance не приймає ключ (-2015): найімовірніше змінилась IP-адреса інтернету. Зараз: {ae['ip']}. "
+           f"Додай її в ключ: Binance → Керування API → Редагувати → Обмеження IP. Торгівля стоїть, доки ключ не прийнято.")
+    j.event("ERROR", "key", msg)
+    n.send("⛔ " + msg)
+
+
 def public_ip() -> str:
     """Поточна зовнішня IPv4-адреса (для підказки, яку IP додати в ключ Binance)."""
     import urllib.request
@@ -687,10 +698,12 @@ class Portfolio:
         now = self.agents[0].now()
         if now >= self.next_reconcile and self.broker.name != "paper":
             self.reconcile()
-            self.next_reconcile = now + self.s.reconcile_every_s * 1000
+            every = 60 if getattr(self.broker, "auth_error", None) else self.s.reconcile_every_s
+            self.next_reconcile = now + every * 1000
         earn_step(self.broker, self.agents, now)
         for a in self.agents:
             a.tick()
+        auth_check(self.broker, self.j, self.n)
 
     def clear_kill(self) -> None:
         for a in self.agents:

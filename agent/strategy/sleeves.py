@@ -42,6 +42,15 @@ SLEEVES["Bm"] = {"strategy": "v3", "label": "Відскок (міні, 1 бот)
                          "risk.max_open_risk_pct=100", "risk.max_eth_share_pct=100", "risk.daily_loss_pct=10",
                          "risk.max_dd_pct=25"]}
 SLEEVES["Cm"] = {**SLEEVES["C"], "label": "Режимне утримання (міні)"}
+# Стоп «під мінімумом прострілу ліквідності» (ідея з відео про стоп-хантинг, 2026-10-21) — гіпотеза для бектесту.
+SW = {"зн0": ["v3.stop_mode=sweep", "v3.sweep_buffer_atr=0"],
+      "зн25": ["v3.stop_mode=sweep", "v3.sweep_buffer_atr=0.25"],
+      "зн50": ["v3.stop_mode=sweep", "v3.sweep_buffer_atr=0.5"],
+      "зн25фікс": ["v3.stop_mode=sweep_size_atr", "v3.sweep_buffer_atr=0.25"]}
+for _k in ("B", "B1", "Bm"):
+    for _s, _o in SW.items():
+        SLEEVES[f"{_k}_{_s}"] = {**SLEEVES[_k], "label": SLEEVES[_k]["label"] + f" + стоп під прострілом ({_s})",
+                                "set": SLEEVES[_k]["set"] + _o}
 BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai"}
 
 PRESETS: dict[str, dict[str, float]] = {
@@ -63,10 +72,16 @@ PRESETS: dict[str, dict[str, float]] = {
     "лише_режим_ев_fomc": {"C_ев_fomc": 1.0},
     "лише_режим_ев_все": {"C_ев_все": 1.0},
 }
+for _s in SW:
+    PRESETS[f"обережний_{_s}"] = {f"B_{_s}": 1.0}
+    PRESETS[f"збалансований_{_s}"] = {f"B1_{_s}": 0.7, "C": 0.3}
+    PRESETS[f"live_міні_{_s}"] = {f"Bm_{_s}": 0.5, "Cm": 0.5}
 
 BASE_PRESETS = ["поточний", "обережний", "збалансований", "агресивний", "лише_режим"]
-_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE]
-GROUPS = {"all": [k for k in _BT if k != "live_міні"], "base": BASE_PRESETS, "macro": [k for k in _BT if k != "live_міні"]}
+_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE and "_зн" not in k]
+_SWG = ["обережний", "збалансований", "live_міні"]
+GROUPS = {"sweep": _SWG + [f"{b}_{s}" for b in _SWG for s in SW],
+          "all": [k for k in _BT if k != "live_міні"], "base": BASE_PRESETS, "macro": [k for k in _BT if k != "live_міні"]}
 
 
 def apply_overrides(raw: dict, overrides: list[str]) -> dict:

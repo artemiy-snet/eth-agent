@@ -21,7 +21,7 @@ on:
       preset:
         description: "Портфель"
         type: choice
-        options: [base, macro, поточний, обережний, збалансований, агресивний, лише_режим]
+        options: [base, macro, sweep, поточний, обережний, збалансований, агресивний, лише_режим]
         default: base
 
 permissions:
@@ -64,4 +64,14 @@ jobs:
           eth-agent portfolio --config config.example.yaml --start ${{ steps.args.outputs.start }} \
             --end ${{ steps.args.outputs.end }} --preset "$PRESET" --pair "${{ inputs.pair }}" --summary-md reports/portfolio.md
           cat reports/portfolio.md >> "$GITHUB_STEP_SUMMARY"
-          python -c "t=open('reports/portfolio.md',encoding='utf-8').read().replace(chr(10),'%0A'); print('::notice title=Портфелі::'+t[:3900])"
+          python - <<'PY'
+          t = open("reports/portfolio.md", encoding="utf-8").read().splitlines()
+          chunk, n = [], 0
+          for line in t + [None]:
+              if line is None or sum(len(x) + 3 for x in chunk) + len(line) > 3500:
+                  n += 1
+                  print(f"::notice title=Портфелі {n}::" + "%0A".join(chunk))
+                  chunk = []
+              if line is not None:
+                  chunk.append(line)
+          PY

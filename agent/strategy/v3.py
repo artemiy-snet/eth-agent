@@ -56,6 +56,10 @@ class V3Params:
     min_edge_pct: Decimal = D("0.15")
     fee_pct: Decimal = D("0.1")
     k_stop_atr: Decimal = D("3")
+    # стоп: "atr" — вхід − k_stop×ATR; "sweep" — під мінімумом прострілу (buy_min − буфер×ATR), розмір за цим стопом;
+    # "sweep_size_atr" — стоп під прострілом, але розмір як для ATR-стопу (щоб порівняти лише місце стопу)
+    stop_mode: str = "atr"
+    sweep_buffer_atr: Decimal = D("0.25")
     max_hold_h: int = 72
     risk_per_trade_pct: Decimal = D("0.5")
     qty_step: Decimal = D("0.0001")
@@ -168,7 +172,12 @@ def _flat(b: BotV3, tick: Tick, f: Features, p: V3Params, capital: Decimal, out:
             blocked.append((b.bot_id, why))
             return
         stop = px - p.k_stop_atr * atr
-        qty = position_qty(px, stop, b.usdt, capital, p)
+        size_stop = stop
+        if p.stop_mode in ("sweep", "sweep_size_atr"):
+            stop = min(b.buy_min - p.sweep_buffer_atr * atr, px - D("0.1") * atr)
+            if p.stop_mode == "sweep":
+                size_stop = stop
+        qty = position_qty(px, size_stop, b.usdt, capital, p)
         if qty <= 0:
             blocked.append((b.bot_id, "size_zero"))
             return

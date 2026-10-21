@@ -78,6 +78,8 @@ class V3Cfg(BaseModel):
     min_edge_pct: Decimal = Decimal("0.15")
     fee_pct: Decimal = Decimal("0.1")
     k_stop_atr: Decimal = Decimal("2")
+    stop_mode: str = "atr"
+    sweep_buffer_atr: Decimal = Decimal("0.25")
     max_hold_h: int = 72
     risk_per_trade_pct: Decimal = Decimal("0.5")
     filters: V3FiltersCfg = V3FiltersCfg()
@@ -89,6 +91,7 @@ class V3Cfg(BaseModel):
             bots=self.bots, interval_atr=self.interval_atr, budget_usdt=self.budget_usdt_per_bot,
             buy=AtrPoint(**self.buy.model_dump()), sell=AtrPoint(**self.sell.model_dump()),
             min_edge_pct=self.min_edge_pct, fee_pct=self.fee_pct, k_stop_atr=self.k_stop_atr,
+            stop_mode=self.stop_mode, sweep_buffer_atr=self.sweep_buffer_atr,
             max_hold_h=self.max_hold_h, risk_per_trade_pct=self.risk_per_trade_pct,
             qty_step=qty_step, min_notional=min_notional, **self.filters.model_dump(),
         )

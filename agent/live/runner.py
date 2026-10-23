@@ -21,7 +21,7 @@ from pathlib import Path
 from agent.data.exchange_info import ETHUSDT_DEFAULT, SymbolFilters
 from agent.live import features_live
 from agent.live.binance import BASES, BinanceError, Client, NetworkError
-from agent.live.broker import ExchangeBroker, ExecResult, PaperBroker
+from agent.live.broker import ExchangeBroker, ExecResult, PaperBroker, base_asset
 from agent.live.journal import Journal, load_state, save_state
 from agent.live.notify import Notifier
 from agent.live.settings import LiveSettings
@@ -54,11 +54,13 @@ class Agent:
 
     def __init__(self, s: LiveSettings, client: Client, broker, home: Path, journal: Journal,
                  notifier: Notifier, filters: SymbolFilters, strategy=v3, params=None, risk=None,
-                 features=None, name: str = ""):
+                 features=None, name: str = "", pair: str = ""):
         if s.mode not in ("paper", "testnet") and not (s.mode == "live" and s.live_confirmed):
             raise LiveDisabled("Режим live не підтверджено: панель → Налаштування → Режим live + підтвердження.")
         self.s, self.c, self.broker, self.home, self.j, self.n, self.f = s, client, broker, home, journal, notifier, filters
         self.strat, self.name = strategy, name
+        self.pair = pair or s.pair
+        self.base = base_asset(self.pair)
         self.fp = features or s.features
         self.p = dataclasses.replace(params or s.v3, qty_step=filters.step_size, min_notional=filters.min_notional)
         self.risk = RiskGuard(risk or s.risk)
@@ -116,7 +118,7 @@ class Agent:
 
     def refresh_market(self, now: int) -> None:
         try:
-            self.m.bid, self.m.ask = self.c.book_ticker(self.s.pair)
+            self.m.bid, self.m.ask = self.c.book_ticker(self.pair)
             self.m.price_ts, self.m.connected = now, True
         except (NetworkError, BinanceError) as e:
             if self.m.connected:
@@ -126,13 +128,13 @@ class Agent:
     def refresh_features(self, now: int) -> None:
         fp = self.fp
         try:
-            k_atr = self.c.klines(self.s.pair, fp.atr_tf, limit=200)
-            k_1h = self.c.klines(self.s.pair, "1h", limit=1000)
-            k_1d = self.c.klines(self.s.pair, "1d", limit=1000)
+            k_atr = self.c.klines(self.pair, fp.atr_tf, limit=200)
+            k_1h = self.c.klines(self.pair, "1h", limit=1000)
+            k_1d = self.c.klines(self.pair, "1d", limit=1000)
             need = fp.anchor_h * 60 + 1
-            k_1m = self.c.klines(self.s.pair, "1m", limit=min(need, 1000))
+            k_1m = self.c.klines(self.pair, "1m", limit=min(need, 1000))
             while len(k_1m) < need:
-                older = self.c.klines(self.s.pair, "1m", limit=min(need - len(k_1m), 1000), end_time=k_1m[0][0] - 1)
+                older = self.c.klines(self.pair, "1m", limit=min(need - len(k_1m), 1000), end_time=k_1m[0][0] - 1)
                 if not older:
                     break
                 k_1m = older + k_1m
@@ -172,7 +174,7 @@ class Agent:
         if fill.side is Side.BUY:
             self.strat.on_fill(self.state, fill, atr=self.m.feat.atr)
             self.extra["entries"][key] = [fill.ts, fill.price, b.entry_cost]
-            msg = f"{self.tag()}КУПІВЛЯ бот {fill.bot_id}: {fill.qty} ETH по {fill.price:.2f}, стоп {b.stop_px:.2f}"
+            msg = f"{self.tag()}КУПІВЛЯ бот {fill.bot_id}: {fill.qty} {self.base} по {fill.price:.2f}, стоп {b.stop_px:.2f}"
             self.j.event("INFO", "fill", msg)
             self.n.send(f"🟢 [{self.s.mode}] {msg}")
             coid = self.broker.place_stop(fill.bot_id, b.eth, b.stop_px, fill.ts) if b.stop_px > 0 else None
@@ -194,7 +196,7 @@ class Agent:
             if getattr(self.strat, "__name__", "").endswith("ai_trader"):
                 self.extra["ai_pnls"].append(str(pnl))
             self.extra["stops"].pop(key, None)
-            msg = f"{self.tag()}ПРОДАЖ бот {fill.bot_id} ({reason}): {fill.qty} ETH по {fill.price:.2f}, PnL {pnl:+.2f} USDT"
+            msg = f"{self.tag()}ПРОДАЖ бот {fill.bot_id} ({reason}): {fill.qty} {self.base} по {fill.price:.2f}, PnL {pnl:+.2f} USDT"
             self.j.event("INFO", "fill", msg)
             self.n.send(f"{'✅' if pnl >= 0 else '🔻'} [{self.s.mode}] {msg}")
 
@@ -263,17 +265,11 @@ class Agent:
         bal = self.broker.balances()
         if bal is None:
             return
-        need_eth = sum((b.eth for b in self.state.bots), ZERO)
-        need_usdt = sum((b.usdt for b in self.state.bots), ZERO)
-        short = []
-        if need_eth > 0 and bal.get("ETH", ZERO) < need_eth * D("0.995"):
-            short.append((need_eth - bal.get("ETH", ZERO)) / need_eth * HUNDRED)
-        if need_usdt > 0 and bal.get("USDT", ZERO) < need_usdt * D("0.995"):
-            short.append((need_usdt - bal.get("USDT", ZERO)) / need_usdt * HUNDRED)
-        self.balance_diff = max(short) if short else ZERO
-        if short:
+        need = demand([self])
+        self.balance_diff = shortage(need, bal)
+        if self.balance_diff > 0:
             self.j.event("ERROR", "reconcile", f"на біржі менше, ніж думає агент: {self.balance_diff:.2f}%",
-                         exchange=bal, agent_eth=need_eth, agent_usdt=need_usdt)
+                         exchange=bal, agent=need)
 
     def check_stop_files(self, now: int) -> list[Intent]:
         out = []
@@ -349,7 +345,7 @@ class Agent:
                 veto = self.risk.check(it, self.context(now, px))
                 if veto:
                     v3.on_reject(self.state, it.bot_id)
-                    self.j.event("INFO", "veto", f"вето входу бота {it.bot_id}: {veto}")
+                    self.j.event("INFO", "veto", f"{self.tag()}вето входу бота {it.bot_id}: {veto}")
                     continue
                 self.risk.on_order(now)
                 self.execute(it, now)
@@ -369,13 +365,13 @@ class Agent:
             self.j.event("INFO", "veto", f"вхід бота {it.bot_id}{' (' + self.name + ')' if self.name else ''} "
                                          f"заблоковано ШІ (множник {self.ai_mult})")
             return None
-        self.j.event("INFO", "ai", f"вхід бота {it.bot_id} зменшено ШІ: {it.qty} → {qty} ETH")
+        self.j.event("INFO", "ai", f"вхід бота {it.bot_id} зменшено ШІ: {it.qty} → {qty} {self.base}")
         return dataclasses.replace(it, qty=qty, quote_qty=None if it.quote_qty is None else it.quote_qty * self.ai_mult)
 
     def status(self, now: int, px: Decimal) -> dict:
         f = self.m.feat
         self.last_status = {
-            "mode": self.s.mode, "pair": self.s.pair, "sleeve": self.name or "v3", "ts": now, "price": f"{px:.2f}",
+            "mode": self.s.mode, "pair": self.pair, "base": self.base, "sleeve": self.name or "v3", "ts": now, "price": f"{px:.2f}",
             "strategy": getattr(self.strat, "__name__", "v3").rsplit(".", 1)[-1], "ai_mult": str(self.ai_mult),
             "bid": str(self.m.bid), "ask": str(self.m.ask), "connected": self.m.connected,
             "equity": f"{self.equity(px):.2f}",
@@ -421,6 +417,24 @@ class Agent:
             time.sleep(max(1.0, self.s.poll_s - (time.time() - t0)))
 
 
+def demand(agents: list) -> dict:
+    """Скільки кожної монети має бути на біржі за обліком агента: {"USDT": …, "ETH": …, "SOL": …}."""
+    out = {"USDT": ZERO}
+    for a in agents:
+        base = getattr(a, "base", "ETH")
+        for b in a.state.bots:
+            out["USDT"] += b.usdt
+            out[base] = out.get(base, ZERO) + b.eth
+    return out
+
+
+def shortage(need: dict, bal: dict) -> Decimal:
+    """Найбільша нестача у % серед монет (0 — усе зійшлось, допуск 0,5 %)."""
+    short = [(v - bal.get(k, ZERO)) / v * HUNDRED for k, v in need.items()
+             if v > 0 and bal.get(k, ZERO) < v * D("0.995")]
+    return max(short) if short else ZERO
+
+
 def market_for_analyst(statuses: list[dict]) -> dict:
     """Стислий ринковий пакет для ШІ-аналітика зі статусів рукавів (без ключів і балансів біржі)."""
     s0 = next((x for x in statuses if x), {})
@@ -429,8 +443,10 @@ def market_for_analyst(statuses: list[dict]) -> dict:
     return {"price": s0.get("price"), "ema_dist_pct_vs_ema200d": s0.get("ema_dist_pct"),
             "atr_1d_pct": s0.get("atr_pct"), "ema200_1h_slope_24h_pct": s0.get("ema_slope_pct"),
             "high_24h": s0.get("anchor_high"),
-            "sleeves": [{"name": x.get("sleeve"), "entry_gate": x.get("entry_gate"),
-                         "in_eth": any(b.get("phase") != "FLAT" for b in x.get("bots", []))} for x in statuses if x]}
+            "sleeves": [{"name": x.get("sleeve"), "pair": x.get("pair"), "entry_gate": x.get("entry_gate"),
+                         "in_coin": any(b.get("phase") != "FLAT" for b in x.get("bots", [])),
+                         **({"price": x.get("price"), "ema_dist_pct_vs_ema200d": x.get("ema_dist_pct")}
+                            if x.get("pair") != s0.get("pair") else {})} for x in statuses if x]}
 
 
 def book_for_analyst(agents: list, journal) -> dict:
@@ -439,10 +455,10 @@ def book_for_analyst(agents: list, journal) -> dict:
     for a in agents:
         st = a.last_status or {}
         sleeves.append({
-            "name": a.name or "v3", "equity": st.get("equity"), "start_equity": st.get("start_equity"),
+            "name": a.name or "v3", "pair": getattr(a, "pair", "ETHUSDT"), "equity": st.get("equity"), "start_equity": st.get("start_equity"),
             "killed": st.get("killed"), "kill_reason": st.get("kill_reason"), "pause_reason": st.get("pause_reason"),
             "entry_gate": st.get("entry_gate"),
-            "positions": [{"bot": b["id"], "phase": b["phase"], "eth": b["eth"], "usdt": b["usdt"], "entry": b["entry"],
+            "positions": [{"bot": b["id"], "phase": b["phase"], "qty": b["eth"], "asset": st.get("base", "ETH"), "usdt": b["usdt"], "entry": b["entry"],
                            "stop": b["stop"]} for b in st.get("bots", []) if b.get("phase") != "FLAT"],
             "flat_bots": sum(1 for b in st.get("bots", []) if b.get("phase") == "FLAT"),
             "pending_orders": len(a.extra.get("pending", {}) or {}), "exchange_stops": len(a.extra.get("stops", {}) or {}),
@@ -678,20 +694,15 @@ class Portfolio:
         bal = self.broker.balances()
         if bal is None:
             return
-        need_eth = sum((b.eth for a in self.agents for b in a.state.bots), ZERO)
-        need_usdt = sum((b.usdt for a in self.agents for b in a.state.bots), ZERO)
-        short = []
-        if need_eth > 0 and bal.get("ETH", ZERO) < need_eth * D("0.995"):
-            short.append((need_eth - bal.get("ETH", ZERO)) / need_eth * HUNDRED)
-        if need_usdt > 0 and bal.get("USDT", ZERO) < need_usdt * D("0.995"):
-            short.append((need_usdt - bal.get("USDT", ZERO)) / need_usdt * HUNDRED)
-        diff = max(short) if short else ZERO
+        need = demand(self.agents)
+        diff = shortage(need, bal)
         for a in self.agents:
             a.balance_diff = diff
-        if short:
+        if diff > 0:
+            agent_s = ", ".join(f"{k} {v:.5f}" if k != "USDT" else f"USDT {v:.2f}" for k, v in need.items())
+            ex_s = ", ".join(f"{k} {bal.get(k, ZERO):.5f}" if k != "USDT" else f"USDT {bal.get(k, ZERO):.2f}" for k in need)
             self.j.event("ERROR", "reconcile",
-                         f"на біржі менше, ніж думає портфель: {diff:.1f} % (агент: USDT {need_usdt:.2f}, ETH {need_eth:.5f}; "
-                         f"біржа: USDT {bal.get('USDT', ZERO):.2f}, ETH {bal.get('ETH', ZERO):.5f}). "
+                         f"на біржі менше, ніж думає портфель: {diff:.1f} % (агент: {agent_s}; біржа: {ex_s}). "
                          f"Поповни USDT або зменш «Live: межа капіталу»")
 
     def tick(self) -> None:
@@ -703,6 +714,10 @@ class Portfolio:
         earn_step(self.broker, self.agents, now)
         for a in self.agents:
             a.tick()
+        for b in getattr(self, "brokers", [self.broker]):
+            if b is not self.broker and getattr(b, "auth_error", None) and not getattr(self.broker, "auth_error", None):
+                self.broker.auth_error = b.auth_error          # помилка ключа на іншій парі — та сама тривога
+                b.auth_error = None
         auth_check(self.broker, self.j, self.n)
 
     def clear_kill(self) -> None:
@@ -770,10 +785,7 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
             raise LiveDisabled(f"Live: бюджет рукавів {total} перевищує межу {settings.live_max_capital} $")
     client = Client(BASES[settings.mode], sec.get(kk, ""), sec.get(ks, ""))
     client.sync_time()
-    try:
-        filters = SymbolFilters.from_exchange_info(client.exchange_info(settings.pair), settings.pair)
-    except (NetworkError, BinanceError):
-        filters = ETHUSDT_DEFAULT
+    filters = pair_filters(client, settings.pair)
     journal = Journal(home / f"journal_{settings.mode}.sqlite")
     notifier = Notifier(sec.get("TELEGRAM_TOKEN"), sec.get("TELEGRAM_CHAT_ID"))
     if settings.mode == "paper":
@@ -786,10 +798,23 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
         obj = Agent(settings, client, broker, home, journal, notifier, filters)
     else:
         from agent.strategy import trend
-        agents = [Agent(settings, client, broker, home, journal, notifier, filters,
+        brokers, fl = {settings.pair: broker}, {settings.pair: filters}
+        for sl in settings.sleeves:                     # інші пари (напр. SOL) — свої фільтри й брокер, той самий рахунок
+            p = sl.pair or settings.pair
+            if p not in brokers:
+                fl[p] = pair_filters(client, p)
+                brokers[p] = PaperBroker(settings.v3.fee_pct, fl[p]) if settings.mode == "paper" else \
+                    ExchangeBroker(client, p, fl[p], settings.mode, settings.stop_limit_buffer_pct)
+        agents = [Agent(settings, client, brokers[sl.pair or settings.pair], home, journal, notifier,
+                        fl[sl.pair or settings.pair],
                         strategy={"trend": trend, "ai": ai_trader}.get(sl.strategy, v3), params=sl.params, risk=sl.risk,
-                        features=sl.features, name=sl.name) for sl in settings.sleeves]
+                        features=sl.features, name=sl.name, pair=sl.pair) for sl in settings.sleeves]
         obj = Portfolio(agents)
+        obj.brokers = list(brokers.values())
+        extra = sorted({a.pair for a in agents} - {settings.pair})
+        if extra:
+            journal.event("INFO", "start", f"додаткові пари: {', '.join(extra)} "
+                                           f"({', '.join(a.name for a in agents if a.pair != settings.pair)})")
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
     obj.bnb_fees = None
     obj.healthcheck_url = sec.get("HEALTHCHECK_URL", "") if sec.get("HEALTHCHECK_URL", "").startswith("https://") else ""
@@ -801,8 +826,17 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
         em = EarnManager(client, home, journal, notifier, enabled=bool(ec.get("enabled", False)),
                          reserve_pct=D(str(ec.get("reserve_pct", 20))))
         if em.enabled or em.parked > 0:
-            broker.earn = em
+            for b in getattr(obj, "brokers", [broker]):     # перед купівлею будь-якої пари USDT повертаються з депозиту
+                b.earn = em
     return obj
+
+
+def pair_filters(client, pair: str) -> SymbolFilters:
+    from agent.data.exchange_info import default_filters
+    try:
+        return SymbolFilters.from_exchange_info(client.exchange_info(pair), pair)
+    except (NetworkError, BinanceError):
+        return ETHUSDT_DEFAULT if pair == "ETHUSDT" else default_filters(pair)
 
 
 def bnb_check(client, journal, notifier) -> bool | None:

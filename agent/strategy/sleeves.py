@@ -42,6 +42,9 @@ SLEEVES["Bm"] = {"strategy": "v3", "label": "Відскок (міні, 1 бот)
                          "risk.max_open_risk_pct=100", "risk.max_eth_share_pct=100", "risk.daily_loss_pct=10",
                          "risk.max_dd_pct=25"]}
 SLEEVES["Cm"] = {**SLEEVES["C"], "label": "Режимне утримання (міні)"}
+# Режимне утримання на SOL (рішення Командира 2026-10-23: готувати автоматичне додавання). Живий агент додає його сам
+# (portfolio.sol.auto), забираючи половину частки C/Cm, коли капітал ≥ portfolio.sol.min_capital_usdt.
+SLEEVES["Cs"] = {**SLEEVES["C"], "label": "Режимне утримання SOL", "pair": "SOLUSDT"}
 # Стоп «під мінімумом прострілу ліквідності» (ідея з відео про стоп-хантинг, 2026-10-21) — гіпотеза для бектесту.
 SW = {"зн0": ["v3.stop_mode=sweep", "v3.sweep_buffer_atr=0"],
       "зн25": ["v3.stop_mode=sweep", "v3.sweep_buffer_atr=0.25"],
@@ -51,7 +54,7 @@ for _k in ("B", "B1", "Bm"):
     for _s, _o in SW.items():
         SLEEVES[f"{_k}_{_s}"] = {**SLEEVES[_k], "label": SLEEVES[_k]["label"] + f" + стоп під прострілом ({_s})",
                                 "set": SLEEVES[_k]["set"] + _o}
-BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai"}
+BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai" and "pair" not in v}
 
 PRESETS: dict[str, dict[str, float]] = {
     "поточний": {"A": 1.0},

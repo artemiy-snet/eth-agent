@@ -44,6 +44,13 @@ SCHEMA = [
     _f("live.preset", "select", "general", opts=["як_у_портфелі", "live_міні"] + LIVE_PRESETS, uk="Live: склад",
        en="Live: mix", help_uk="як_у_портфелі — повна версія; live_міні — під малий капітал (мін. ордер 5 $).",
        help_en="as portfolio — full version; live_міні — for small capital (min order $5)."),
+    _f("portfolio.sol.auto", "bool", "general", uk="Додавати SOL автоматично (від межі капіталу нижче)",
+       en="Add SOL automatically (from the capital threshold below)",
+       help_uk="Половина рукава «режимне утримання» (C/Cm) торгує SOL тією ж стратегією. Бектест: дохідніше, "
+               "але глибші просадки. Відскок на SOL не переноситься.",
+       help_en="Half of the regime-hold sleeve (C/Cm) trades SOL with the same strategy. Backtest: higher return, deeper drawdowns."),
+    _f("portfolio.sol.min_capital_usdt", "number", "general", 30, 100000, step=10, uk="SOL: з капіталу агента від, USDT",
+       en="SOL: from agent capital, USDT"),
     _f("earn.enabled", "bool", "general", uk="Відсотки на вільні USDT (Binance Earn, лише live)",
        en="Interest on idle USDT (Binance Earn, live only)",
        help_uk="Вільні USDT агента лежать у гнучкому депозиті й приносять відсотки; перед купівлею повертаються на спот. "

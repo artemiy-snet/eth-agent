@@ -247,7 +247,7 @@ def test_portfolio_two_sleeves_on_fake_exchange(tmp_path):
     from agent.live.status_server import render
 
     raw = yaml.safe_load(open("config.example.yaml", encoding="utf-8"))
-    raw["portfolio"] = {"capital_usdt": 500, "preset": "збалансований"}
+    raw["portfolio"] = {"capital_usdt": 500, "preset": "збалансований", "sol": {"auto": False}}
     raw["v3"]["filters"] = {"trend_block_pct": None, "atr_min_pct": None, "atr_max_pct": None}
     sleeves, cap = build_sleeves(raw)
     c = FakeClient()
@@ -381,7 +381,7 @@ def test_panel_api_settings_and_csrf(tmp_path):
         st = _json.loads(urllib.request.urlopen(base + "/api/settings").read())
         assert st["secrets"]["ANTHROPIC_API_KEY"] == "…abcd" and "dummy-value" not in _json.dumps(st)
         s = load(Path("config.portfolio.yaml"), home=tmp_path)
-        assert [x.name for x in s.sleeves] == ["B1", "C", "D"] and s.analyst["every_h"] == 8
+        assert [x.name for x in s.sleeves] == ["B1", "C", "D", "Cs"] and s.analyst["every_h"] == 8
         code, r = post("/api/settings", {"values": {"agent.mode": "testnet"}})
         assert code == 400                                                 # немає ключів Binance
         code, _ = post("/api/restart", {})

@@ -177,8 +177,8 @@ class Client:
                              signed=True)
 
 
-def fill_from_response(o: dict) -> tuple[Decimal, Decimal, Decimal, Decimal]:
-    """(виконана кількість брутто, середня ціна з УСІХ fills, комісія в USDT, комісія в ETH)."""
+def fill_from_response(o: dict, base: str = "ETH") -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """(виконана кількість брутто, середня ціна з УСІХ fills, комісія в USDT, комісія в базовій монеті пари)."""
     qty = Decimal(o.get("executedQty", "0"))
     quote = Decimal(o.get("cummulativeQuoteQty", "0"))
     avg = quote / qty if qty > 0 else Decimal(0)
@@ -187,7 +187,7 @@ def fill_from_response(o: dict) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         c, asset = Decimal(f.get("commission", "0")), f.get("commissionAsset", "")
         if asset == "USDT":
             fee_usdt += c
-        elif asset == "ETH":
+        elif asset == base:
             fee_eth += c
         # BNB — див. fee_in("BNB"): переводиться в USDT за ціною BNBUSDT у брокері
     return qty, avg, fee_usdt, fee_eth

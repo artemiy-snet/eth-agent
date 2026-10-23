@@ -48,16 +48,23 @@ def status_text(ov: dict) -> str:
     elif ov.get("stop_file"):
         lines.append("■ STOP — нові входи заборонено (/resume — зняти)")
     pos = []
+    others = {}
     for s in ov.get("sleeves") or []:
+        spx = float(s.get("price") or 0) or px              # ціна пари рукава (ETH або SOL…)
+        coin = s.get("base") or "ETH"
+        if s.get("pair") and ov.get("pair") and s["pair"] != ov["pair"] and spx:
+            others[coin] = spx
         for b in s.get("bots") or []:
             if b.get("phase") == "FLAT" or not float(b.get("eth") or 0):
                 continue
             e, q = float(b.get("entry") or 0), float(b.get("eth") or 0)
-            u = (px - e) * q if e and px else 0
-            pc = (px / e - 1) * 100 if e and px else 0
+            u = (spx - e) * q if e and spx else 0
+            pc = (spx / e - 1) * 100 if e and spx else 0
             stop = f", стоп {_f(b['stop'])}" if b.get("stop") else ""
-            pos.append(f"• {s.get('sleeve')} #{b.get('id')}: {q:.4f} ETH по {_f(e)} → "
+            pos.append(f"• {s.get('sleeve')} #{b.get('id')}: {q:.4f} {coin} по {_f(e)} → "
                        f"{'+' if u >= 0 else ''}{_f(u)} $ ({'+' if pc >= 0 else ''}{pc:.1f} %){stop}")
+    if others:
+        lines[0] += "".join(f" · {k} {_f(v)} $" for k, v in others.items())
     lines.append("Позиції:\n" + "\n".join(pos) if pos else "Позицій немає — агент у USDT, чекає входу")
     an = ov.get("analyst") or {}
     if an:
@@ -95,7 +102,11 @@ def chart_photo(arg: str, candles, ov: dict, trades: list):
     pts = cp.downsample([(r[0], r[4]) for r in rows])
     t0 = rows[0][0]
     hl, mk, notes = [], [], []
+    other = {s.get("sleeve") for s in ov.get("sleeves") or [] if s.get("pair") and ov.get("pair") and s["pair"] != ov["pair"]}
+    trades = [t for t in trades if t.get("sleeve") not in other]       # графік ETH — без угод інших пар
     for s in ov.get("sleeves") or []:
+        if s.get("sleeve") in other:
+            continue
         for b in s.get("bots") or []:
             if b.get("phase") == "FLAT" or not float(b.get("eth") or 0):
                 continue

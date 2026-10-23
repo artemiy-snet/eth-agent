@@ -294,7 +294,7 @@ const T = {
   next_run:"наступна оцінка",no_ai:"Оцінок ШІ ще немає. Додай ANTHROPIC_API_KEY у Налаштуваннях.",
   cagr:"Річна",maxdd:"Макс. просадка",current:"поточний",news_empty:"Новини завантажуються…",
   open_pos:"Відкриті позиції",hc_url:"Сторож: посилання healthchecks.io (сповістить, якщо телефон вимкнеться)",bnb_off:"комісія не в BNB",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
-  t_in:"Вхід",t_out:"Вихід",t_qty:"ETH",ev_time:"Час",ev_msg:"Подія",
+  t_in:"Вхід",t_out:"Вихід",t_qty:"К-сть",ev_time:"Час",ev_msg:"Подія",
   s_general:"Загальне",s_portfolio:"Портфель",s_keys:"Ключі доступу",s_ai:"ШІ-аналітик",s_ai_trader:"ШІ-трейдер (рукав D)",s_strategy:"Стратегія A/B",s_risk:"Ризик-менеджмент",s_control:"Керування агентом",
   save:"Зберегти",restart:"Перезапустити агента",saved:"Збережено. Натисни «Перезапустити агента», щоб застосувати.",
   restarting:"Перезапуск… сторінка оновиться за ~15 с.",check:"Перевірити",key_set:"задано",key_none:"не задано",
@@ -327,7 +327,7 @@ const T = {
   next_run:"next assessment",no_ai:"No AI assessments yet. Add ANTHROPIC_API_KEY in Settings.",
   cagr:"Annual",maxdd:"Max drawdown",current:"current",news_empty:"Loading news…",
   open_pos:"Open positions",hc_url:"Watchdog: healthchecks.io ping URL (alerts if the phone dies)",bnb_off:"fees not in BNB",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
-  t_in:"Entry",t_out:"Exit",t_qty:"ETH",ev_time:"Time",ev_msg:"Event",
+  t_in:"Entry",t_out:"Exit",t_qty:"Qty",ev_time:"Time",ev_msg:"Event",
   s_general:"General",s_portfolio:"Portfolio",s_keys:"Access keys",s_ai:"AI analyst",s_ai_trader:"AI trader (sleeve D)",s_strategy:"Strategy A/B",s_risk:"Risk management",s_control:"Agent control",
   save:"Save",restart:"Restart agent",saved:"Saved. Press “Restart agent” to apply.",
   restarting:"Restarting… the page will refresh in ~15 s.",check:"Check",key_set:"set",key_none:"not set",
@@ -343,8 +343,13 @@ const T = {
 const SLEEVE_NAMES = {
   A:{uk:"A · Денний відскок",en:"A · Daily bounce"}, B:{uk:"B · Відскок розширений",en:"B · Extended bounce"},
   B1:{uk:"B1 · Відскок, ризик 1 %",en:"B1 · Bounce, 1 % risk"}, C:{uk:"C · Режимне утримання",en:"C · Regime hold"},
-  D:{uk:"D · ШІ-трейдер",en:"D · AI trader"}, v3:{uk:"Денний відскок",en:"Daily bounce"}};
-const SLEEVE_COLOR = {A:"--s1",B:"--s1",B1:"--s1",C:"--s3",D:"--s7",v3:"--s1"};
+  D:{uk:"D · ШІ-трейдер",en:"D · AI trader"}, v3:{uk:"Денний відскок",en:"Daily bounce"},
+  Bm:{uk:"Bm · Відскок (міні)",en:"Bm · Bounce (mini)"}, Cm:{uk:"Cm · Режимне утримання (міні)",en:"Cm · Regime hold (mini)"},
+  Cs:{uk:"Cs · Режимне утримання SOL",en:"Cs · Regime hold SOL"}};
+const SLEEVE_COLOR = {A:"--s1",B:"--s1",B1:"--s1",Bm:"--s1",C:"--s3",Cm:"--s3",Cs:"--s5",D:"--s7",v3:"--s1"};
+const coin=s=>(s&&s.base)||"ETH";                                   // монета рукава (ETH, SOL…)
+const spx=(s,o)=>parseFloat((s&&s.price)||(o&&o.price))||0;          // ціна пари рукава
+const mainPair=(s,o)=>!s.pair||!o||!o.pair||s.pair===o.pair;          // рукав на основній парі (графік ETH)
 let LANG = store("lang") || ((navigator.language||"").toLowerCase().startsWith("en") ? "en" : "uk");
 function store(k,v){try{if(v===undefined)return localStorage.getItem("eth_"+k);localStorage.setItem("eth_"+k,v)}catch(e){return null}}
 function t(k,vars){let s=(T[LANG]&&T[LANG][k])||T.uk[k]||k;if(vars)for(const [a,b] of Object.entries(vars))s=s.replace("{"+a+"}",b);return s}
@@ -492,8 +497,7 @@ function renderCal(sel,n){const ul=$(sel);ul.textContent="";const o=S.ov;if(!o)r
   for(const e of evs)ul.append(el("li",{},el("span",{class:"badge "+e.kind},e.kind.toUpperCase()),el("span",{},fmtTime(e.ts)),el("span",{class:"when"},rel(e.ts))))}
 
 function renderSleeves(){const box=$("#sleeves");box.textContent="";const o=S.ov;if(!o)return;
-  const px=parseFloat(o.price)||0;
-  for(const s of o.sleeves||[]){if(!s.sleeve)continue;
+  for(const s of o.sleeves||[]){if(!s.sleeve)continue;const px=spx(s,o),cn=coin(s);
     const usdt=(s.bots||[]).reduce((a,b)=>a+parseFloat(b.usdt||0),0),eth=(s.bots||[]).reduce((a,b)=>a+parseFloat(b.eth||0),0)*px,tot=usdt+eth||1;
     const pnl=parseFloat(s.equity)-parseFloat(s.start_equity);const nm=(SLEEVE_NAMES[s.sleeve]||{})[LANG]||s.sleeve;
     const gate=s.entry_gate==="відкрито"?t("open_gate"):s.entry_gate;
@@ -501,9 +505,9 @@ function renderSleeves(){const box=$("#sleeves");box.textContent="";const o=S.ov
       el("div",{class:"top"},el("i",{style:`width:10px;height:10px;border-radius:3px;background:var(${SLEEVE_COLOR[s.sleeve]||"--s1"})`}),
         el("span",{class:"name"},nm),el("span",{class:"spacer"}),el("b",{},fmt(parseFloat(s.equity))+" $"),
         el("span",{class:"small "+(pnl>=0?"pos":"neg")},fmtSigned(pnl))),
-      el("div",{class:"alloc",title:`USDT ${fmt(usdt)} · ETH ${fmt(eth)}`},el("i",{style:`width:${usdt/tot*100}%;background:var(--s1)`}),el("i",{style:`width:${eth/tot*100}%;background:var(--s2)`})),
+      el("div",{class:"alloc",title:`USDT ${fmt(usdt)} · ${cn} ${fmt(eth)}`},el("i",{style:`width:${usdt/tot*100}%;background:var(--s1)`}),el("i",{style:`width:${eth/tot*100}%;background:var(--s2)`})),
       el("div",{class:"small muted",style:"display:flex;gap:10px;flex-wrap:wrap"},
-        el("span",{},`■ USDT ${fmt(usdt/tot*100,0)} %`),el("span",{style:"color:var(--s2)"},`■ ETH ${fmt(eth/tot*100,0)} %`),
+        el("span",{},`■ USDT ${fmt(usdt/tot*100,0)} %`),el("span",{style:"color:var(--s2)"},`■ ${cn} ${fmt(eth/tot*100,0)} %`),
         el("span",{class:s.killed?"neg":""},s.killed?t("st_killed"):t("st_working")),el("span",{},`${t("entries")}: ${gate}`)));
     const armedN=(s.bots||[]).filter(b=>b.armed).length,pendN=(s.bots||[]).filter(b=>String(b.phase).startsWith("PENDING")).length;
     const tags=el("div",{style:"display:flex;gap:6px;flex-wrap:wrap"});
@@ -531,7 +535,8 @@ function drawPrice(){const host=$("#priceChart");if(!host.offsetParent)return;
   const d1=S.candles["1d"]||[];const closes=d1.map(x=>x[4]);const e200=ema(closes,200),e50=ema(closes,50);
   const dayVal=(arr,ts)=>{let v=null;for(let i=0;i<d1.length&&d1[i][0]+864e5<=ts;i++)v=arr[i];return v};// лише закриті дні
   const t0=c[0][0],t1=c[c.length-1][0];const step=c.length>1?(c[1][0]-c[0][0]):36e5;
-  const o=S.ov||{};const sleeves=o.sleeves||[];
+  const o=S.ov||{};const sleeves=(o.sleeves||[]).filter(s=>mainPair(s,o));
+  const otherNames=new Set((o.sleeves||[]).filter(s=>!mainPair(s,o)).map(s=>s.sleeve));
   // діапазон цін
   let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
   const levels=[];
@@ -592,7 +597,7 @@ function drawPrice(){const host=$("#priceChart");if(!host.offsetParent)return;
   const hits=[];
   if(S.overlays.trades){const tri=(x,y,upw,col,ring)=>{const s=6;const d=upw?`M${x},${y-s}L${x+s},${y+s}L${x-s},${y+s}Z`:`M${x},${y+s}L${x+s},${y-s}L${x-s},${y-s}Z`;
       g.append(sv("path",{d,fill:col,stroke:ring,"stroke-width":2,"stroke-linejoin":"round"}))};
-    for(const tr of S.trades){const inR=tr.entry_ts>=t0&&tr.entry_ts<=t1+step,outR=tr.exit_ts>=t0&&tr.exit_ts<=t1+step;if(!inR&&!outR)continue;
+    for(const tr of S.trades){if(otherNames.has(tr.sleeve))continue;const inR=tr.entry_ts>=t0&&tr.entry_ts<=t1+step,outR=tr.exit_ts>=t0&&tr.exit_ts<=t1+step;if(!inR&&!outR)continue;
       const col=tr.pnl>=0?up:dn;
       if(inR&&outR)g.append(sv("line",{x1:X(tr.entry_ts),y1:Y(tr.entry_px),x2:X(tr.exit_ts),y2:Y(tr.exit_px),stroke:col,"stroke-width":1,"stroke-dasharray":"2 3",opacity:.8}));
       if(inR){tri(X(tr.entry_ts),Y(tr.entry_px)+9,true,css("--s1"),surf);hits.push({x:X(tr.entry_ts),y:Y(tr.entry_px)+9,tr,side:"buy"})}
@@ -609,7 +614,7 @@ function drawPrice(){const host=$("#priceChart");if(!host.offsetParent)return;
     const hit=hits.reduce((b,h)=>{const d=Math.hypot(h.x-mx,h.y-my);return d<14&&(!b||d<b.d)?{...h,d}:b},null);
     if(hit){cross.setAttribute("opacity",0);hl.setAttribute("opacity",0);
       if(hit.ai)tipRows(tip,"🧠 "+fmtTime(hit.ai.ts),[[t("k_ai"),hit.ai.news_regime],[t("confidence"),Math.round(hit.ai.confidence*100)+" %"],[t("price_now"),hit.ai.price||"—"]].concat((hit.ai.facts||[]).slice(0,2).map(f=>["•",f.slice(0,60)])));
-      else if(hit.open)tipRows(tip,`${hit.open.s.sleeve} #${hit.open.b.id} · ${t("open")}`,[[t("entry"),hit.open.b.entry],[t("stop"),hit.open.b.stop||"—"],["ETH",hit.open.b.eth]]);
+      else if(hit.open)tipRows(tip,`${hit.open.s.sleeve} #${hit.open.b.id} · ${t("open")}`,[[t("entry"),hit.open.b.entry],[t("stop"),hit.open.b.stop||"—"],[coin(hit.open.s),hit.open.b.eth]]);
       else{const tr=hit.tr;tipRows(tip,`${tr.sleeve||""} #${tr.bot} · ${t(hit.side)} · ${fmtTime(hit.side==="buy"?tr.entry_ts:tr.exit_ts)}`,
         [[t("entry"),fmt(tr.entry_px)],[t("t_out"),fmt(tr.exit_px)],[t("pnl"),fmtSigned(tr.pnl)+" $"],[t("t_reason"),tr.reason]])}
       placeTip(host,tip,hit.x/sx,hit.y/sx);return}
@@ -702,12 +707,12 @@ function drawAiChart(){const host=$("#aiChart");if(!host.offsetParent)return;con
 
 // ---------- trades tab ----------
 async function loadTrades(){await loadSide();try{S.events=await api("/api/events")}catch(e){}renderTrades();renderEvents();drawPnl()}
-function renderOpen(){const tb=$("#openTbl");if(!tb)return;tb.textContent="";const o=S.ov||{};const px=parseFloat(o.price);
-  tb.append(el("tr",{},[t("t_since"),t("t_sleeve"),t("t_bot"),t("t_in"),t("t_now"),"ETH",t("t_upnl"),t("t_stop")].map(h=>el("th",{},h))));let n=0;
-  for(const s of o.sleeves||[])for(const b of s.bots||[]){if(b.phase==="FLAT"||!parseFloat(b.eth))continue;n++;
+function renderOpen(){const tb=$("#openTbl");if(!tb)return;tb.textContent="";const o=S.ov||{};
+  tb.append(el("tr",{},[t("t_since"),t("t_sleeve"),t("t_bot"),t("t_in"),t("t_now"),t("t_qty"),t("t_upnl"),t("t_stop")].map(h=>el("th",{},h))));let n=0;
+  for(const s of o.sleeves||[])for(const b of s.bots||[]){if(b.phase==="FLAT"||!parseFloat(b.eth))continue;n++;const px=spx(s,o);
     const e=parseFloat(b.entry),q=parseFloat(b.eth),u=e&&px?(px-e)*q:null,pc=e&&px?(px/e-1)*100:null;
     tb.append(el("tr",{},el("td",{},b.entry_ts?fmtTime(b.entry_ts):"—"),el("td",{},s.sleeve||"—"),el("td",{},"#"+b.id),el("td",{},e?fmt(e):"—"),
-      el("td",{},px?fmt(px):"—"),el("td",{},fmt(q,4)),el("td",{class:u>=0?"pos":"neg"},u==null?"—":fmtSigned(u)+" $ ("+fmtSigned(pc)+" %)"),el("td",{},b.stop?fmt(parseFloat(b.stop)):"—")))}
+      el("td",{},px?fmt(px):"—"),el("td",{},fmt(q,4)+" "+coin(s)),el("td",{class:u>=0?"pos":"neg"},u==null?"—":fmtSigned(u)+" $ ("+fmtSigned(pc)+" %)"),el("td",{},b.stop?fmt(parseFloat(b.stop)):"—")))}
   if(!n)tb.append(el("tr",{},el("td",{colspan:8,class:"empty"},t("no_open"))))}
 function renderTrades(){renderOpen();const tr=S.trades||[];const st=$("#tradeStats");st.textContent="";
   const wins=tr.filter(x=>x.pnl>0),loss=tr.filter(x=>x.pnl<0);const gw=wins.reduce((a,x)=>a+x.pnl,0),gl=-loss.reduce((a,x)=>a+x.pnl,0),sum=gw-gl;

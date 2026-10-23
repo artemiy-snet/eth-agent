@@ -95,6 +95,11 @@ earn:
 portfolio:
   capital_usdt: 500
   preset: збалансований+ші
+  # SOL (бектест 2021/2022…2026-09, docs/backtest_log.md): режимне утримання на SOL — половина рукава C/Cm,
+  # автоматично, коли капітал агента ≥ min_capital_usdt. Відскок (B) на SOL не переноситься.
+  sol:
+    auto: true
+    min_capital_usdt: 100
 
 # Рукав D «ШІ-трейдер» (Біблія 7.6)
 ai_trader:

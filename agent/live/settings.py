@@ -55,6 +55,7 @@ class Sleeve:
     params: object         # V3Params | TrendParams
     risk: RiskParams
     features: FeatureParams
+    pair: str = ""         # порожньо — основна пара агента (agent.pair)
 
 
 @dataclass(frozen=True)
@@ -128,28 +129,43 @@ def build_sleeves(raw: dict) -> tuple[tuple, Decimal]:
     if not pf:
         return (), D(500)
     capital = D(pf.get("capital_usdt", 500))
-    weights = pf.get("sleeves") or PRESETS[pf.get("preset", "обережний")]
+    weights = sol_auto(dict(pf.get("sleeves") or PRESETS[pf.get("preset", "обережний")]), pf.get("sol"), capital)
     out = []
     for name, w in weights.items():
         sl = SLEEVES[name]
+        pair = sl.get("pair", "")
         r = apply_overrides(copy.deepcopy(raw), list(sl["set"]))
         share = capital * D(w)
         fp = feature_params(r.get("features"))
         if sl["strategy"] == "ai":
             ap = dataclasses.replace(ai_params(r.get("ai_trader")), budget_usdt=share)
-            out.append(Sleeve(name, "ai", ap, risk_params(r.get("risk")), fp))
+            out.append(Sleeve(name, "ai", ap, risk_params(r.get("risk")), fp, pair))
         elif sl["strategy"] == "trend":
             tp = trend_params(r.get("trend"))
             tp = dataclasses.replace(tp, budget_usdt=share / tp.bots)
             # якір (максимум за N днів) потрібен лише для пробою; без пробою — 24 год (менше запитів 1m-свічок)
             fp = dataclasses.replace(fp, atr_tf="1d",
                                      anchor_h=int(_merge(TREND_DEFAULTS, r.get("trend"))["breakout_days"]) * 24 if tp.breakout else 24)
-            out.append(Sleeve(name, "trend", tp, risk_params(r.get("risk")), fp))
+            out.append(Sleeve(name, "trend", tp, risk_params(r.get("risk")), fp, pair))
         else:
             vp = v3_params(r.get("v3"))
             vp = dataclasses.replace(vp, budget_usdt=share / vp.bots)
-            out.append(Sleeve(name, "v3", vp, risk_params(r.get("risk")), fp))
+            out.append(Sleeve(name, "v3", vp, risk_params(r.get("risk")), fp, pair))
     return tuple(out), capital
+
+
+def sol_auto(weights: dict, cfg: dict | None, capital: Decimal) -> dict:
+    """Автоматичне додавання SOL: половина частки режимного утримання (C або Cm) іде в Cs, коли капітал ≥ межі.
+    Рукав C/Cm зберігає назву (і свій стан) — відкрита позиція не губиться, бюджет нижчає лише для ботів без позиції."""
+    cfg = {"auto": True, "min_capital_usdt": 100, **(cfg or {})}
+    if not cfg["auto"] or "Cs" in weights or capital < D(str(cfg["min_capital_usdt"])):
+        return weights
+    host = next((k for k in ("C", "Cm") if k in weights), None)
+    if host is None:
+        return weights
+    half = float(weights[host]) / 2
+    weights[host], weights["Cs"] = half, half
+    return weights
 
 
 def risk_params(raw: dict | None) -> RiskParams:

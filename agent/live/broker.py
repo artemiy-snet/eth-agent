@@ -19,6 +19,13 @@ from agent.strategy.types import Fill, Intent, Side
 _seq = itertools.count(1)
 
 
+ASSETS = ("ETH", "SOL", "USDT", "BNB")      # монети, які бачить звірка (бази пар агента + USDT + BNB для комісії)
+
+
+def base_asset(symbol: str) -> str:
+    return symbol[:-4] if symbol.endswith("USDT") else symbol
+
+
 def client_order_id(prefix: str, it: Intent) -> str:
     # ≤ 36 символів, лише [A-Za-z0-9_-]
     return f"{prefix}{it.bot_id}{it.side.value[0]}{it.ts // 1000}{next(_seq) % 1000:03d}"[:36]
@@ -41,6 +48,7 @@ class PaperBroker:
     def __init__(self, fee_pct: Decimal, filters: SymbolFilters):
         self.fee = fee_pct / HUNDRED
         self.f = filters
+        self.base = base_asset(filters.symbol)
 
     def execute(self, it: Intent, bid: Decimal, ask: Decimal, ts: int) -> ExecResult:
         coid = client_order_id("eap", it)
@@ -74,9 +82,11 @@ class ExchangeBroker:
     def __init__(self, client: Client, symbol: str, filters: SymbolFilters, mode: str,
                  stop_buffer_pct: Decimal = D("1.0"), resolve_attempts: int = 3, sleep=time.sleep):
         self.c, self.symbol, self.f, self.name = client, symbol, filters, mode
+        self.base = base_asset(symbol)
         self.buffer = stop_buffer_pct / HUNDRED
         self.attempts, self.sleep = resolve_attempts, sleep
-        self.prefix = "eat" if mode == "testnet" else "eal"
+        # префікс clientOrderId: для ETH — як раніше (eal/eat), для інших пар — з літерою пари (eals…)
+        self.prefix = ("eat" if mode == "testnet" else "eal") + ("" if self.base == "ETH" else self.base[0].lower())
         self.auth_error = None           # {"since", "ip"} коли Binance не приймає ключ (-2015)
         self.earn = None                 # EarnManager (гнучкий депозит для вільних USDT), див. runner.build
 
@@ -89,7 +99,7 @@ class ExchangeBroker:
 
     # --- ордери ---------------------------------------------------------------------------
     def _to_fill(self, o: dict, it_bot: int, side: Side, ts: int) -> Fill | None:
-        qty, avg, fee_usdt, fee_eth = fill_from_response(o)
+        qty, avg, fee_usdt, fee_eth = fill_from_response(o, self.base)
         if qty <= 0:
             return None
         bnb = fee_in(o, "BNB")
@@ -205,7 +215,7 @@ class ExchangeBroker:
             return None
         self.auth_error = None
         out = {b["asset"]: Decimal(b["free"]) + Decimal(b["locked"]) for b in acc.get("balances", [])
-               if b["asset"] in ("ETH", "USDT", "BNB")}
+               if b["asset"] in ASSETS}
         if self.earn is not None:        # USDT агента, що лежать у гнучкому депозиті, теж його
             out["USDT"] = out.get("USDT", ZERO) + self.earn.parked
         return out

@@ -283,6 +283,7 @@ def diary_page(snap: dict | None, days: dict) -> str:
                    f'<p>Бот {pct((d.get("idx") or 100) - 100)} від старту, ETH {pct((d.get("eth") or 100) - 100)}. {tr_s}'
                    f'Відкритих позицій: {d.get("positions", 0)}.{" ШІ: " + reg + "." if reg else ""}'
                    f'{" ⛔ Спрацював запобіжник." if d.get("killed") else ""}</p></li>')
+    log_html = "".join(log) or "<li><p class=\"muted\">Записи з’являться з першого повного дня.</p></li>"
     body = f"""<div class="stats"><div><b class="pf">{pct(st['pf'])}</b><span>бот від старту</span></div>
 <div><b class="eth">{pct(st['eth'])}</b><span>просто тримати ETH</span></div>
 <div><b>{st['days']}</b><span>днів на справжніх грошах</span></div>
@@ -292,7 +293,7 @@ def diary_page(snap: dict | None, days: dict) -> str:
 Зміна суми, з якою працює бот, не рахується прибутком чи збитком.</p>
 <h2 class="section">Відкриті позиції</h2>{pos}
 <h2 class="section">Закриті угоди</h2>{trs}
-<h2 class="section">День за днем</h2><ol class="daylog">{''.join(log) or '<li><p class="muted">Записи з\'являться з першого повного дня.</p></li>'}</ol>
+<h2 class="section">День за днем</h2><ol class="daylog">{log_html}</ol>
 <p class="muted small">Публікуються лише відсотки: суми в доларах, кількість монет, ключі й адреси не передаються.
 ШІ-режим: {esc(REGIME.get(st['regime'] or '', st['regime'] or '—'))}. Версія бота {esc(str(snap.get('version', '')))}.
 Оновлено {kyiv(snap['ts'])} (Київ).</p>"""

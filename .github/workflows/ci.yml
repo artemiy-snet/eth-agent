@@ -16,6 +16,20 @@ jobs:
       - run: pip install -e ".[dev,research]"
       - run: pytest -q
 
+  # сайт criptobot.store працює на Ubuntu 22.04 (Python 3.10) — збірка й чат мають запускатися там
+  site-py310:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - run: pip install markdown
+      - run: python site/build.py --out /tmp/site
+      - run: python -c "import ast; [ast.parse(open(f).read()) for f in ('site/editor.py', 'site/chat/server.py')]"
+
   secrets:
     runs-on: ubuntu-latest
     steps:

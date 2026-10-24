@@ -30,8 +30,8 @@ fi
 
 echo "== 2/7 Користувач і теки"
 id criptobot >/dev/null 2>&1 || useradd --system --home-dir "$BASE" --shell /usr/sbin/nologin criptobot
-mkdir -p "$BASE" "$WWW" "$DATA" "$ETC"
-chown criptobot:criptobot "$BASE" "$WWW" "$DATA"
+mkdir -p "$BASE" "$WWW" "$DATA/articles" "$ETC"
+chown -R criptobot:criptobot "$BASE" "$WWW" "$DATA"
 
 echo "== 3/7 Код з GitHub"
 if [ ! -d "$BASE/repo/.git" ]; then
@@ -52,6 +52,10 @@ CHAT_PER_IP_HOUR=10
 CHAT_PER_IP_DAY=30
 CHAT_MODEL=claude-haiku-5-5,claude-sonnet-5-5
 CHAT_HOSTS=${DOMAIN},www.${DOMAIN}
+# Токен для статей з Telegram (/post) і з пульта ${DOMAIN}/admin.html — тримай у секреті
+POST_TOKEN=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
+# Модель «редакції» (статті з оновлень і нотаток)
+EDITOR_MODEL=claude-sonnet-5-5,claude-haiku-5-5
 ENV
   chown root:criptobot "$ETC/chat.env"
   chmod 640 "$ETC/chat.env"
@@ -65,6 +69,7 @@ echo "criptobot ALL=(root) NOPASSWD: /bin/systemctl restart criptobot-chat" > /e
 chmod 440 /etc/sudoers.d/criptobot
 visudo -cf /etc/sudoers.d/criptobot >/dev/null
 systemctl daemon-reload
+sudo -u criptobot env DATA_DIR="$DATA" ARTICLES_DIR="$DATA/articles" python3 "$BASE/repo/site/editor.py" commits
 sudo -u criptobot bash "$BASE/repo/site/deploy/update.sh" --force
 systemctl enable --now criptobot-update.timer
 if grep -q '^ANTHROPIC_API_KEY=.\+' "$ETC/chat.env"; then
@@ -102,5 +107,7 @@ fi
 
 echo
 echo "Готово: https://$DOMAIN"
-echo "Сайт оновлюється з GitHub сам кожні 5 хв. Перевірка чату: curl -s http://127.0.0.1:8790/api/health"
+echo "Токен для статей (Telegram /post і пульт https://$DOMAIN/admin.html):"
+echo "   $(grep '^POST_TOKEN=' "$ETC/chat.env" | cut -d= -f2)"
+echo "Сайт оновлюється з GitHub сам кожні 2 хв. Перевірка чату: curl -s http://127.0.0.1:8790/api/health"
 echo "Питання з чату (анонімно): sudo tail $DATA/questions.jsonl"

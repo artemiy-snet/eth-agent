@@ -762,7 +762,7 @@ def read_secrets(home: Path) -> dict[str, str]:
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
     for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
-              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL"):
+              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL", "SITE_POST_TOKEN", "SITE_URL"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out

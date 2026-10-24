@@ -293,7 +293,7 @@ const T = {
   thesis:"Теза",invalidation:"Спростування",critic:"Критик",mode_auto:"діє автоматично (лише зменшує ризик)",mode_shadow:"тіньовий режим",
   next_run:"наступна оцінка",no_ai:"Оцінок ШІ ще немає. Додай ANTHROPIC_API_KEY у Налаштуваннях.",
   cagr:"Річна",maxdd:"Макс. просадка",current:"поточний",news_empty:"Новини завантажуються…",
-  open_pos:"Відкриті позиції",hc_url:"Сторож: посилання healthchecks.io (сповістить, якщо телефон вимкнеться)",bnb_off:"комісія не в BNB",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
+  open_pos:"Відкриті позиції",hc_url:"Сторож: посилання healthchecks.io (сповістить, якщо телефон вимкнеться)",site_tok:"Журнал criptobot.store: токен редакції (для /post у Telegram)",bnb_off:"комісія не в BNB",t_since:"Відкрито",t_now:"Зараз",t_upnl:"PnL зараз",t_stop:"Стоп",no_open:"Немає — агент у USDT",t_count:"Угод",t_win:"Виграшних",t_pf:"Profit factor",t_pnl:"Сума PnL",t_time:"Час",t_sleeve:"Рукав",t_bot:"Бот",t_reason:"Причина",
   t_in:"Вхід",t_out:"Вихід",t_qty:"К-сть",ev_time:"Час",ev_msg:"Подія",
   s_general:"Загальне",s_portfolio:"Портфель",s_keys:"Ключі доступу",s_ai:"ШІ-аналітик",s_ai_trader:"ШІ-трейдер (рукав D)",s_strategy:"Стратегія A/B",s_risk:"Ризик-менеджмент",s_control:"Керування агентом",
   save:"Зберегти",restart:"Перезапустити агента",saved:"Збережено. Натисни «Перезапустити агента», щоб застосувати.",
@@ -326,7 +326,7 @@ const T = {
   thesis:"Thesis",invalidation:"Invalidation",critic:"Critic",mode_auto:"applied automatically (risk-down only)",mode_shadow:"shadow mode",
   next_run:"next assessment",no_ai:"No AI assessments yet. Add ANTHROPIC_API_KEY in Settings.",
   cagr:"Annual",maxdd:"Max drawdown",current:"current",news_empty:"Loading news…",
-  open_pos:"Open positions",hc_url:"Watchdog: healthchecks.io ping URL (alerts if the phone dies)",bnb_off:"fees not in BNB",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
+  open_pos:"Open positions",hc_url:"Watchdog: healthchecks.io ping URL (alerts if the phone dies)",site_tok:"criptobot.store magazine: editor token (for /post in Telegram)",bnb_off:"fees not in BNB",t_since:"Opened",t_now:"Now",t_upnl:"PnL now",t_stop:"Stop",no_open:"None — agent is in USDT",t_count:"Trades",t_win:"Winners",t_pf:"Profit factor",t_pnl:"Total PnL",t_time:"Time",t_sleeve:"Sleeve",t_bot:"Bot",t_reason:"Reason",
   t_in:"Entry",t_out:"Exit",t_qty:"Qty",ev_time:"Time",ev_msg:"Event",
   s_general:"General",s_portfolio:"Portfolio",s_keys:"Access keys",s_ai:"AI analyst",s_ai_trader:"AI trader (sleeve D)",s_strategy:"Strategy A/B",s_risk:"Risk management",s_control:"Agent control",
   save:"Save",restart:"Restart agent",saved:"Saved. Press “Restart agent” to apply.",
@@ -745,7 +745,7 @@ function renderSettings(){const box=$("#settings");box.textContent="";const st=S
   const msg=el("span",{class:"msg"});
   for(const [sec,lab] of sections){const card=el("div",{class:"card form"},el("h2",{},t(lab)));
     if(sec==="keys"){card.append(el("div",{class:"small muted"},t("keys_help")));
-      const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["BINANCE_LIVE_API_KEY","binance_live_key","binance_live"],["BINANCE_LIVE_API_SECRET","binance_live_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["ANTHROPIC_WORKSPACE_ID","anthropic_ws",null],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null],["HEALTHCHECK_URL","hc_url",null]];
+      const keys=[["BINANCE_API_KEY","binance_key","binance"],["BINANCE_API_SECRET","binance_secret",null],["BINANCE_LIVE_API_KEY","binance_live_key","binance_live"],["BINANCE_LIVE_API_SECRET","binance_live_secret",null],["ANTHROPIC_API_KEY","anthropic_key","anthropic"],["ANTHROPIC_WORKSPACE_ID","anthropic_ws",null],["TELEGRAM_TOKEN","tg_token","telegram"],["TELEGRAM_CHAT_ID","tg_chat",null],["HEALTHCHECK_URL","hc_url",null],["SITE_POST_TOKEN","site_tok",null]];
       for(const [k,l,chk] of keys){const cur=st.secrets[k];const out=el("div",{class:"h"});
         const inp=el("input",{type:(k==="TELEGRAM_CHAT_ID"||k==="ANTHROPIC_WORKSPACE_ID"||k==="HEALTHCHECK_URL")?"text":"password",placeholder:cur?`${t("key_set")} ${cur} — ${t("key_ph")}`:t("key_ph"),autocomplete:"off",oninput:e=>{secrets[k]=e.target.value}});
         const row=el("div",{class:"keyrow"},inp,chk?el("button",{class:"btn",onclick:async()=>{out.textContent="…";const r=await post("/api/check/"+chk,{secrets}).catch(()=>({ok:false,msg:"?"}));out.textContent=(r.ok?"✓ ":"✗ ")+r.msg+(r.ok&&secrets[k]?" — "+t("press_save"):"");out.className="h msg "+(r.ok?"ok":"err")}},t("check")):null);

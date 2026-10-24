@@ -26,10 +26,14 @@ def test_build_makes_pages_news_and_kb(tmp_path):
     b = _load("site_build", "site/build.py")
     b.build(tmp_path / "out")
     out = tmp_path / "out"
-    for p in ("index.html", "news.html", "install.html", "ideas.html", "forum.html", "chat.html", "rss.xml"):
+    for p in ("index.html", "news.html", "install.html", "ideas.html", "forum.html", "chat.html", "rss.xml",
+              "articles.html", "myths.html", "myth-1.html", "admin.html", "a-2026-10-24-telefon-ne-spyt.html",
+              "assets/media/robot.mp4", "assets/site.js"):
         assert (out / p).exists(), p
     idx = (out / "index.html").read_text(encoding="utf-8")
     assert "Не фінансова порада" in idx and "assets/style.css" in idx
+    assert idx.count('class="scene') >= 6 and "Телефон, який не спить" in idx      # фільм зі сцен + головна історія
+    assert 'name="robots" content="noindex"' in (out / "admin.html").read_text(encoding="utf-8")
     assert (out / "kb" / "PHONE.md").exists() and (out / "kb" / "README.md").exists()
     ideas = (out / "ideas.html").read_text(encoding="utf-8")
     assert "backtests.html" in ideas                      # посилання між документами переписано на сторінки сайту
@@ -113,3 +117,40 @@ def test_history_is_sanitized():
     assert chat.clean_history(h) == []
     h2 = [{"role": "user", "content": "u"}, {"role": "assistant", "content": "a" * 5000}]
     assert chat.clean_history(h2)[1]["content"] == "a" * 2000
+
+
+def test_editor_turns_note_into_article(tmp_path, monkeypatch):
+    ed = _load("site_editor", "site/editor.py")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    sent = []
+
+    def op(req, timeout=0):
+        sent.append(json.loads(req.data))
+        art = {"title": "Перший продаж з прибутком", "lead": "Бот уперше закрив угоду в плюс.", "rubric": "Щоденник експерименту",
+               "cover": "morning", "body": "Сьогодні…\n\n## Що сталося\nПродаж."}
+        return Resp(json.dumps({"content": [{"type": "text", "text": "Ось: " + json.dumps(art, ensure_ascii=False)}],
+                                "usage": {"input_tokens": 1000, "output_tokens": 500}}).encode())
+    used = []
+    p = ed.from_post("Сьогодні бот уперше продав ETH з прибутком, +0,4 $", tmp_path, opener=op, charge=used.append)
+    t = p.read_text(encoding="utf-8")
+    assert p.name.endswith("pershyi-prodazh-z-prybutkom.md") and "rubric: Щоденник експерименту" in t and "cover: morning" in t
+    assert "author: автор проєкту" in t and used and "уперше продав" in sent[0]["messages"][0]["content"]
+    b = _load("site_build3", "site/build.py")
+    a = b.parse_article(p)
+    assert a["slug"] == "a-" + p.stem and a["rubric"] == "Щоденник експерименту"
+
+
+def test_post_endpoint_needs_token(tmp_path):
+    lim = chat.Limits(tmp_path, 10, 30, 1.0)
+    writer = lambda text, out, charge=None: out / "2026-10-24-x.md"
+    assert chat.handle_post("secret", "Bearer nope", {"text": "x" * 30}, tmp_path, lim, writer)[0] == 401
+    assert chat.handle_post("", "Bearer ", {"text": "x" * 30}, tmp_path, lim, writer)[0] == 401
+    assert chat.handle_post("secret", "Bearer secret", {"text": "коротко"}, tmp_path, lim, writer)[0] == 400
+    code, r = chat.handle_post("secret", "Bearer secret", {"text": "x" * 30}, tmp_path, lim, writer)
+    assert code == 200 and r["url"] == "/a-2026-10-24-x.html" and (tmp_path / "rebuild").exists()
+
+
+def test_telegram_post_without_token_explains(tmp_path):
+    from agent.live.tg_bot import TelegramControl
+    t = TelegramControl("t", "1", tmp_path, overview=lambda: {}, trades=lambda: [])
+    assert "токен редакції" in t.handle("/post Сьогодні бот уперше продав ETH з прибутком")

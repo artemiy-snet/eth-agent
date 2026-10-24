@@ -10,8 +10,10 @@ CHAT_PER_IP_DAY, CHAT_PORT, KB_DIR, DATA_DIR, CHAT_PRICE_IN / _OUT / _CACHE_READ
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -203,7 +205,27 @@ def log_question(data_dir: Path, q: str, now: float) -> None:
         pass
 
 
-def make_handler(chat: Chat, allowed_hosts: set[str]):
+def handle_post(token: str, auth: str, data: dict, data_dir: Path, limits: Limits, writer=None) -> tuple[int, dict]:
+    """Нотатка автора (з Telegram /post або з пульта admin.html) → стаття «редакції». Лише з POST_TOKEN."""
+    if not token or not hmac.compare_digest(auth, f"Bearer {token}"):
+        return 401, {"error": "Невірний токен."}
+    text = str(data.get("text") or "").strip()
+    if len(text) < 20:
+        return 400, {"error": "Замало тексту для статті (від 20 символів)."}
+    if writer is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import editor
+        writer = editor.from_post
+    try:
+        path = writer(text, data_dir / "articles",
+                      charge=lambda u: limits.charge(cost(u, {"in": 3, "out": 15, "cache_read": 0.3, "cache_write": 3.75}), time.time()))
+    except Exception as e:                       # noqa: BLE001
+        return 502, {"error": f"Редакція не змогла написати статтю: {e}"[:300]}
+    (data_dir / "rebuild").touch()
+    return 200, {"ok": True, "file": path.name, "url": "/a-" + path.stem + ".html"}
+
+
+def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = ""):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -223,6 +245,16 @@ def make_handler(chat: Chat, allowed_hosts: set[str]):
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
+            if self.path == "/api/post":
+                n = int(self.headers.get("Content-Length") or 0)
+                if n <= 0 or n > 40_000:
+                    return self._json(413, {"error": "Завеликий запит."})
+                try:
+                    data = json.loads(self.rfile.read(n))
+                except ValueError:
+                    return self._json(400, {"error": "Некоректний запит."})
+                code, obj = handle_post(post_token, self.headers.get("Authorization", ""), data, chat.limits.dir, chat.limits)
+                return self._json(code, obj)
             if self.path != "/api/ask":
                 return self._json(404, {"error": "not found"})
             origin = self.headers.get("Origin", "")
@@ -257,7 +289,7 @@ def main() -> None:
     hosts = {h.strip() for h in env("CHAT_HOSTS", "criptobot.store,www.criptobot.store").split(",") if h.strip()}
     port = int(env("CHAT_PORT", "8790"))
     print(f"чат слухає 127.0.0.1:{port}, моделі {models}, бюджет {limits.daily_usd} $/добу")
-    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts)).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts, env("POST_TOKEN", ""))).serve_forever()
 
 
 if __name__ == "__main__":

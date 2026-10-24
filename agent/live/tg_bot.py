@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -23,6 +24,7 @@ COMMANDS = [
     ("stop", "заборонити нові покупки"),
     ("flatten", "продати все і зупинитись"),
     ("resume", "дозволити торгівлю знову"),
+    ("post", "нотатка в журнал criptobot.store: /post текст"),
     ("help", "список команд"),
 ]
 HELP = "Команди:\n" + "\n".join(f"/{c} — {d}" for c, d in COMMANDS)
@@ -170,10 +172,11 @@ def ai_text(home: Path) -> str:
 
 class TelegramControl:
     def __init__(self, token: str, chat_id: str, home: Path, overview, trades, journal=None,
-                 api: str = "https://api.telegram.org", candles=None, equity=None):
+                 api: str = "https://api.telegram.org", candles=None, equity=None, site: str = "", site_token: str = ""):
         self.token, self.chat, self.home = token.strip(), str(chat_id).strip(), home
         self.overview, self.trades, self.j, self.api = overview, trades, journal, api
         self.candles, self.equity = candles or (lambda tf: []), equity or (lambda: [])
+        self.site, self.site_token = site.rstrip("/"), site_token.strip()
         self.offset = 0
         self.flatten_asked = 0.0
         self.stop_flag = threading.Event()
@@ -211,6 +214,28 @@ class TelegramControl:
         if res:
             self.offset = res[-1]["update_id"] + 1
 
+    def post(self, note: str) -> str:
+        """Нотатка → редакція журналу criptobot.store (/api/post): Claude зробить статтю, сайт оновиться за 2–3 хв."""
+        if not self.site_token:
+            return "Журнал не підключено: додай «токен редакції» в панелі → Налаштування → ключі."
+        if len(note) < 20:
+            return "Напиши нотатку після команди, напр.: /post Сьогодні бот уперше продав ETH з прибутком…"
+        req = urllib.request.Request(f"{self.site}/api/post", data=json.dumps({"text": note}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.site_token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=150) as r:
+                j = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            try:
+                j = json.loads(e.read().decode())
+            except ValueError:
+                j = {"error": f"HTTP {e.code}"}
+        except Exception as e:  # noqa: BLE001
+            return f"Сайт недоступний: {e}"
+        if j.get("ok"):
+            return f"📰 Редакція написала статтю. З'явиться за 2–3 хв: {self.site}{j.get('url', '')}"
+        return "Не вийшло: " + str(j.get("error", "невідома помилка"))
+
     # --- команди --------------------------------------------------------------------------
     def handle(self, text: str, now: float | None = None) -> str:
         now = time.time() if now is None else now
@@ -229,6 +254,8 @@ class TelegramControl:
             return (png, cap) if png else cap
         if cmd == "ai":
             return ai_text(self.home)
+        if cmd in ("post", "стаття"):
+            return self.post((text or "").strip().split(None, 1)[1] if len((text or "").split()) > 1 else "")
         if cmd == "stop":
             (self.home / "STOP").touch()
             self._log("STOP з Telegram")
@@ -299,6 +326,7 @@ def start(agent, sec: dict, home: Path):
     mode = getattr(agent, "agents", [agent])[0].s.mode
     tc = TelegramControl(sec["TELEGRAM_TOKEN"], sec["TELEGRAM_CHAT_ID"], home,
                          overview=lambda: overview(agent), trades=lambda: api.trades(agent.j, 50), journal=agent.j,
-                         candles=lambda tf: api.candles(agent, tf), equity=lambda: api.equity_history(home, mode))
+                         candles=lambda tf: api.candles(agent, tf), equity=lambda: api.equity_history(home, mode),
+                         site=sec.get("SITE_URL", "https://criptobot.store"), site_token=sec.get("SITE_POST_TOKEN", ""))
     tc.start()
     return tc

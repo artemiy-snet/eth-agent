@@ -1,0 +1,20 @@
+[Unit]
+Description=criptobot.store — чат «Запитати ШІ»
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=criptobot
+EnvironmentFile=/etc/criptobot/chat.env
+Environment=KB_DIR=/var/www/criptobot/kb DATA_DIR=/var/lib/criptobot
+ExecStart=/usr/bin/python3 /opt/criptobot/repo/site/chat/server.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/criptobot
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

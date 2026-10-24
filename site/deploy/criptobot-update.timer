@@ -1,0 +1,9 @@
+[Unit]
+Description=criptobot.store — оновлення сайту кожні 5 хв
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

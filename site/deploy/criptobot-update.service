@@ -1,0 +1,7 @@
+[Unit]
+Description=criptobot.store — оновлення сайту з GitHub
+
+[Service]
+Type=oneshot
+User=criptobot
+ExecStart=/bin/bash /opt/criptobot/repo/site/deploy/update.sh

@@ -5,4 +5,5 @@ Description=criptobot.store — оновлення сайту з GitHub
 Type=oneshot
 User=criptobot
 EnvironmentFile=-/etc/criptobot/chat.env
+EnvironmentFile=-/etc/criptobot/site.env
 ExecStart=/bin/bash /opt/criptobot/repo/site/deploy/update.sh

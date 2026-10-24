@@ -27,6 +27,7 @@ main() {
     "$PY" site/build.py --out "$tmp/out"
     rsync -a --delete "$tmp/out/" "$WWW/"
     rm -r -- "$tmp"
+    "$PY" site/promote.py || echo "просування: помилка, спробую наступного разу"
     if [ "$built" != "$new" ] && { [ "$built" = none ] || git diff --name-only "$built" "$new" 2>/dev/null | grep -qE '^site/(chat/|editor\.py)'; }; then
       sudo -n /bin/systemctl restart criptobot-chat || true
     fi

@@ -28,7 +28,7 @@ jobs:
           python-version: "3.10"
       - run: pip install markdown
       - run: python site/build.py --out /tmp/site
-      - run: python -c "import ast; [ast.parse(open(f).read()) for f in ('site/editor.py', 'site/chat/server.py')]"
+      - run: python -c "import ast; [ast.parse(open(f).read()) for f in ('site/editor.py', 'site/chat/server.py', 'site/chat/stats.py', 'site/promote.py', 'site/deploy/goaccess_daily.py', 'site/deploy/umami_init.py')]"
 
   secrets:
     runs-on: ubuntu-latest

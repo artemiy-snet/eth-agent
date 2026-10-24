@@ -6,7 +6,8 @@ Wants=network-online.target
 [Service]
 User=criptobot
 EnvironmentFile=/etc/criptobot/chat.env
-Environment=KB_DIR=/var/www/criptobot/kb DATA_DIR=/var/lib/criptobot
+EnvironmentFile=-/etc/criptobot/stats.env
+Environment=KB_DIR=/var/www/criptobot/kb DATA_DIR=/var/lib/criptobot ARTICLES_DIR=/var/lib/criptobot/articles WWW_DIR=/var/www/criptobot GOACCESS_DIR=/var/lib/criptobot/goaccess
 ExecStart=/usr/bin/python3 /opt/criptobot/repo/site/chat/server.py
 Restart=always
 RestartSec=5

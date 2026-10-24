@@ -258,7 +258,19 @@ def handle_diary(token: str, auth: str, data, data_dir: Path, now: float | None 
     return 200, {"ok": True}
 
 
-def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = ""):
+def make_stats():
+    """GET /api/stats для «Пульта» (site/chat/stats.py). Статті — з тих самих джерел, що й сайт."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import stats
+
+    def arts():
+        import build
+        return build.articles()
+    return stats.StatsAPI(articles_fn=arts)
+
+
+def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = "", stats_api=None):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -273,6 +285,10 @@ def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = ""):
             self.wfile.write(b)
 
         def do_GET(self):
+            if self.path.split("?")[0] == "/api/stats" and stats_api is not None:
+                ip = (self.headers.get("X-Real-IP") or self.client_address[0]).strip()
+                code, obj = stats_api.handle(self.headers.get("Authorization", ""), self.path.partition("?")[2], ip)
+                return self._json(code, obj)
             if self.path == "/api/health":
                 return self._json(200, {"ok": True, "spent_today_usd": round(chat.limits.spent(time.time()), 4)})
             self._json(404, {"error": "not found"})
@@ -332,7 +348,8 @@ def main() -> None:
     hosts = {h.strip() for h in env("CHAT_HOSTS", "criptobot.store,www.criptobot.store").split(",") if h.strip()}
     port = int(env("CHAT_PORT", "8790"))
     print(f"чат слухає 127.0.0.1:{port}, моделі {models}, бюджет {limits.daily_usd} $/добу")
-    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts, env("POST_TOKEN", ""))).serve_forever()
+    st = make_stats() if env("STATS_TOKEN", "") else None
+    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts, env("POST_TOKEN", ""), st)).serve_forever()
 
 
 if __name__ == "__main__":

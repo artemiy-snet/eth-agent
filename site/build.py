@@ -319,15 +319,52 @@ def issue_line() -> str:
     return f"Випуск {n}, {MONTHS_NOM[t.tm_mon - 1]} {t.tm_year}"
 
 
-def page(slug: str, title: str, body: str, desc: str = "", home: bool = False, og_img: str = "robot") -> str:
+def tracker() -> str:
+    """Umami (статистика без cookie): скрипт додається, якщо на сервері задано UMAMI_SRC і UMAMI_WEBSITE_ID (site.env)."""
+    src, wid = os.environ.get("UMAMI_SRC", ""), os.environ.get("UMAMI_WEBSITE_ID", "")
+    if not (src.startswith("https://") and re.fullmatch(r"[0-9a-fA-F-]{20,40}", wid or "")):
+        return ""
+    return f'<script defer src="{esc(src)}" data-website-id="{esc(wid)}" data-domains="{esc(CFG["domain"])}"></script>'
+
+
+def site_url(path: str = "") -> str:
+    return f"https://{CFG['domain']}/{path}"
+
+
+def page(slug: str, title: str, body: str, desc: str = "", home: bool = False, og_img: str = "robot",
+         article: dict | None = None, noindex: bool = False) -> str:
     d = esc(desc or CFG["tagline"])
+    url = site_url("" if home else f"{slug}.html")
+    img = site_url(f"assets/media/{og_img}.jpg")
+    full_title = title if home else f"{title} — {CFG['title']}"
+    ld = ""
+    if article:
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(article["ts"]))
+        ld = json.dumps({"@context": "https://schema.org", "@type": "Article", "headline": article["title"][:110],
+                         "description": article.get("lead", ""), "image": [img], "datePublished": iso, "dateModified": iso,
+                         "inLanguage": "uk", "mainEntityOfPage": url, "articleSection": article.get("rubric", ""),
+                         "author": {"@type": "Person", "name": article.get("author") or "Редакція ETH-Агента"},
+                         "publisher": {"@type": "Organization", "name": CFG["title"],
+                                       "logo": {"@type": "ImageObject", "url": site_url("assets/icon.svg")}}},
+                        ensure_ascii=False).replace("</", "<\\/")
+        ld = f'<script type="application/ld+json">{ld}</script>'
+    meta_art = (f'<meta property="article:published_time" content="{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(article["ts"]))}">'
+                f'<meta property="article:section" content="{esc(article.get("rubric", ""))}">' if article else "")
+    robots = '<meta name="robots" content="noindex">' if noindex else ""
     return f"""<!doctype html><html lang="uk"{' class="home"' if home else ''}><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>{esc(title)}{'' if home else ' — ' + esc(CFG['title'])}</title><meta name="description" content="{d}">
+<title>{esc(full_title)}</title><meta name="description" content="{d}">{robots}
+<link rel="canonical" href="{url}">
+<meta property="og:site_name" content="{esc(CFG['title'])}"><meta property="og:locale" content="uk_UA">
+<meta property="og:type" content="{'article' if article else 'website'}"><meta property="og:url" content="{url}">
 <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{d}">
-<meta property="og:image" content="https://{CFG['domain']}/assets/media/{og_img}.jpg"><meta name="theme-color" content="#07121A">
-{THEME_JS}{FONTS}<link rel="stylesheet" href="assets/style.css"><link rel="alternate" type="application/rss+xml" href="rss.xml" title="{esc(CFG['title'])}">
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<meta property="og:image" content="{img}"><meta property="og:image:width" content="864"><meta property="og:image:height" content="480">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(title)}">
+<meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{img}">{meta_art}
+<meta name="theme-color" content="#07121A">{ld}
+{THEME_JS}{FONTS}<link rel="stylesheet" href="assets/style.css">
+<link rel="alternate" type="application/rss+xml" href="feed.xml" title="{esc(CFG['title'])}">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">{'' if noindex else tracker()}
 </head><body>
 <header class="bar"><a class="mark" href="index.html"><span class="eye"></span>ETH-Агент</a>
 <nav id="nav">{nav()}</nav>
@@ -336,10 +373,16 @@ def page(slug: str, title: str, body: str, desc: str = "", home: bool = False, o
 {body}
 <footer class="foot"><div class="col"><p class="warn"><b>Бета-експеримент. Не фінансова порада.</b> Торгівля криптовалютою може
 призвести до втрати всіх вкладених коштів. Результати бектестів — минуле, яке не гарантує майбутнього.</p>
-<p><a href="{GH}">Код на GitHub</a>, ліцензія MIT. <a href="rss.xml">RSS</a>.</p></div></footer>
+<p><a href="{GH}">Код на GitHub</a>, ліцензія MIT. <a href="feed.xml">RSS</a>. Статистика відвідувань — без cookie.</p></div></footer>
 <a class="fab" href="chat.html" aria-label="Запитати ШІ про бота"><span class="eye"></span></a>
 <script src="assets/site.js" defer></script>
 </body></html>"""
+
+
+def sitemap(entries: list[tuple[str, int]]) -> str:
+    rows = "".join(f"<url><loc>{esc(site_url(p))}</loc><lastmod>{time.strftime('%Y-%m-%d', time.gmtime(ts))}</lastmod></url>"
+                   for p, ts in entries)
+    return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>'
 
 
 def media(name: str, cls: str, lazy: bool = True) -> str:
@@ -515,7 +558,7 @@ def build(out: Path) -> None:
     w("articles.html", page("articles", "Статті", articles_page(arts)))
     w("myths.html", page("myths", "Розвінчуємо міфи", myths_page(ms), og_img="desk"))
     for a in arts:
-        w(f"{a['slug']}.html", page(a["slug"], a["title"], article_page(a), a["lead"], og_img=a["cover"]))
+        w(f"{a['slug']}.html", page(a["slug"], a["title"], article_page(a), a["lead"], og_img=a["cover"], article=a))
     for m in ms:
         w(f"{m['slug']}.html", page(m["slug"], m["title"], inner(
             m["title"], f'<div class="prose">{md_to_html(m["body"])}</div><p class="more"><a href="myths.html">Усі розбори</a></p>',
@@ -534,9 +577,20 @@ def build(out: Path) -> None:
         (out / "kb" / f"article-{a['slug']}.md").write_text(f"# {a['title']}\n\n{a['lead']}\n\n{a['body']}", encoding="utf-8")
     w("forum.html", page("forum", "Форум", forum_page(), og_img="desk"))
     w("chat.html", page("chat", "Запитати ШІ", chat_page()))
-    w("admin.html", page("admin", "Пульт редакції", admin_page()).replace("<head>", '<head><meta name="robots" content="noindex">', 1))
-    w("robots.txt", "User-agent: *\nDisallow: /kb/\nDisallow: /api/\nDisallow: /admin.html\n")
-    w("rss.xml", rss(items, arts))
+    w("admin.html", page("admin", "Пульт редакції", admin_page(), noindex=True))
+    w("robots.txt", f"User-agent: *\nDisallow: /kb/\nDisallow: /api/\nDisallow: /admin.html\n\nSitemap: {site_url('sitemap.xml')}\n")
+    feed = rss(items, arts)
+    w("rss.xml", feed)
+    w("feed.xml", feed)
+    newest = max([items[0]["ts"]] if items else [int(time.time())])
+    pages_ = [("", newest), ("diary.html", (snap or {}).get("ts", newest * 1000) // 1000), ("articles.html", arts[0]["ts"] if arts else newest),
+              ("news.html", newest), ("myths.html", newest), ("forum.html", newest), ("chat.html", newest)]
+    pages_ += [(f"{slug}.html", newest) for slug, f, _ in CFG["docs"] if (ROOT / "docs" / f).exists()]
+    pages_ += [(f"{a['slug']}.html", a["ts"]) for a in arts] + [(f"{m['slug']}.html", newest) for m in ms]
+    w("sitemap.xml", sitemap(pages_))
+    key = os.environ.get("INDEXNOW_KEY", "")
+    if re.fullmatch(r"[0-9a-f]{32}", key):
+        w(f"{key}.txt", key)                                         # ключ IndexNow у корені сайту
     print(f"сайт зібрано: {out} · статей {len(arts)} · міфів {len(ms)} · хроніка {len(items)}")
 
 

@@ -179,3 +179,112 @@ def test_diary_index_ignores_budget_change_and_feeds_site(tmp_path, monkeypatch)
     d = (tmp_path / "out" / "diary.html").read_text(encoding="utf-8")
     assert "+2,5 %" in d and "+4,2 %" in d and "<svg" in d and "Bm" in d and "$" not in d.split("<main")[1].split("</main>")[0]
     assert "День 3 на справжніх грошах" in (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
+
+
+def test_stats_api_shapes_umami_and_goaccess(tmp_path):
+    st = _load("site_stats", "site/chat/stats.py")
+    calls = []
+
+    def op(req, timeout=0):
+        u = req.full_url
+        calls.append(u)
+        if u.endswith("/api/auth/login"):
+            body = {"token": "t"}
+        elif "/stats" in u:
+            body = {"pageviews": {"value": 120, "prev": 1}, "visitors": {"value": 40}, "visits": {"value": 50},
+                    "bounces": {"value": 20}, "totaltime": {"value": 5000}}
+        elif "/active" in u:
+            body = {"x": 3}
+        elif "/pageviews" in u:
+            body = {"pageviews": [{"x": "2026-10-24 00:00:00", "y": 30}], "sessions": [{"x": "2026-10-24 00:00:00", "y": 9}]}
+        elif "type=url" in u:
+            body = [{"x": "/a-x.html", "y": 7}]
+        elif "type=country" in u:
+            body = [{"x": "UA", "y": 30}]
+        elif "type=referrer" in u:
+            body = [{"x": "t.me", "y": 5}]
+        elif "type=device" in u:
+            body = [{"x": "mobile", "y": 33}]
+        else:
+            body = {}
+        return Resp(json.dumps(body).encode())
+    www = tmp_path / "www"
+    www.mkdir()
+    (www / "a-x.html").write_text("<title>Стаття Х — ETH-Агент</title>", encoding="utf-8")
+    ga = tmp_path / "ga"
+    ga.mkdir()
+    import time as _t
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = _t.mktime((2026, 10, 24, 12, 0, 0, 0, 0, -1))
+    today = datetime.fromtimestamp(now, ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d")
+    (ga / f"bots_{today}.json").write_text(json.dumps({"requests": 15, "top": {"Googlebot": 10, "scanner:zgrab": 5}}))
+    api = st.StatsAPI({"STATS_TOKEN": "s" * 40, "UMAMI_PASS": "p", "UMAMI_WEBSITE_ID": "w", "WWW_DIR": str(www),
+                       "GOACCESS_DIR": str(ga)}, opener=op,
+                      articles_fn=lambda: [{"title": "Т", "slug": "a-x", "ts": 1792843200}])
+    assert api.handle("Bearer nope", "days=7", "ip")[0] == 401
+    assert api.handle("", "days=7", "ip")[1] == {"error": "Невірний токен"}
+    assert api.handle("Bearer " + "s" * 40, "days=91", "ip", now)[0] == 400
+    code, d = api.handle("Bearer " + "s" * 40, "days=7", "ip", now)
+    assert code == 200 and d["ok"] and d["days"] == 7 and d["live"] == 3 and d["search"] is None
+    assert d["totals"] == {"visitors": 40, "visits": 50, "pageviews": 120, "bounce_rate": 0.4, "avg_time_s": 100}
+    assert len(d["daily"]) == 7 and d["pages"][0] == {"path": "/a-x.html", "title": "Стаття Х", "views": 7}
+    assert d["countries"][0] == {"code": "UA", "visitors": 30} and d["devices"][0]["type"] == "mobile"
+    assert d["bots"]["requests"] == 15 and d["bots"]["top"][0] == {"name": "Googlebot", "requests": 10}
+    assert d["articles"]["total"] == 1 and d["articles"]["last"][0]["url"] == "/a-x.html"
+    n = len(calls)
+    api.handle("Bearer " + "s" * 40, "days=7", "ip", now + 10)                    # кеш 60 с
+    assert len(calls) == n
+    for i in range(30):
+        api.handle("Bearer " + "s" * 40, "days=7", "ip2", now + 20)
+    assert api.handle("Bearer " + "s" * 40, "days=7", "ip2", now + 21)[0] == 429
+
+
+def test_build_seo_and_promote(tmp_path, monkeypatch):
+    pytest.importorskip("markdown")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("UMAMI_SRC", "https://stats.criptobot.store/script.js")
+    monkeypatch.setenv("UMAMI_WEBSITE_ID", "0b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e")
+    monkeypatch.setenv("INDEXNOW_KEY", "0123456789abcdef0123456789abcdef")
+    b = _load("site_build5", "site/build.py")
+    out = tmp_path / "www"
+    b.build(out)
+    art = (out / "a-2026-10-17-sitkovyi-bot.html").read_text(encoding="utf-8")
+    assert '"@type": "Article"' in art and 'og:type" content="article"' in art and "twitter:card" in art
+    assert 'data-website-id="0b1c2d3e' in art and 'rel="canonical" href="https://criptobot.store/a-2026-10-17-sitkovyi-bot.html"' in art
+    assert "data-website-id" not in (out / "admin.html").read_text(encoding="utf-8")
+    sm = (out / "sitemap.xml").read_text(encoding="utf-8")
+    assert "https://criptobot.store/a-2026-10-17-sitkovyi-bot.html" in sm and "Sitemap: https://criptobot.store/sitemap.xml" in (out / "robots.txt").read_text()
+    assert (out / "feed.xml").read_text(encoding="utf-8").startswith("<?xml") and (out / "0123456789abcdef0123456789abcdef.txt").exists()
+    pr = _load("site_promote", "site/promote.py")
+    sent = []
+
+    class R:
+        status = 202
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"ok": true}'
+
+    def op(req, data=None, timeout=0):
+        sent.append(getattr(req, "full_url", req))
+        return R()
+    env = {"INDEXNOW_KEY": "0123456789abcdef0123456789abcdef"}
+    r = pr.run(out, tmp_path / "data", env, op)
+    assert r["indexnow"] > 10 and r["telegram"] == 0 and sent == ["https://api.indexnow.org/indexnow"]
+    sent.clear()
+    assert pr.run(out, tmp_path / "data", env, op)["indexnow"] == 0 and not sent            # нічого нового — тиша
+    (tmp_path / "data" / "articles").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "articles" / "2026-10-30-nova.md").write_text(
+        "---\ntitle: Нова\nrubric: Нова версія\ncover: robot\ndate: 2026-10-30\nlead: Анонс\n---\n\nТекст", encoding="utf-8")
+    monkeypatch.setenv("ARTICLES_DIR", str(tmp_path / "data" / "articles"))
+    b2 = _load("site_build6", "site/build.py")
+    b2.build(out)
+    env2 = dict(env, TELEGRAM_BOT_TOKEN="1:x", TELEGRAM_CHANNEL_ID="@c")
+    r = pr.run(out, tmp_path / "data", env2, op)
+    assert r["telegram"] == 1 and any("sendPhoto" in str(u) for u in sent)

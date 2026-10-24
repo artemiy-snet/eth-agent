@@ -19,3 +19,16 @@
 curl -fsSL https://raw.githubusercontent.com/artemiy-snet/eth-agent/main/site/deploy/setup.sh -o setup.sh
 sudo bash setup.sh criptobot.store
 ```
+
+## Статистика й просування (deploy/stats_setup.sh)
+
+```
+curl -fsSL https://raw.githubusercontent.com/artemiy-snet/eth-agent/main/site/deploy/stats_setup.sh -o stats_setup.sh
+bash stats_setup.sh criptobot.store
+```
+
+- Umami (Docker, 127.0.0.1:3010) на `stats.criptobot.store` — потрібен DNS A-запис `stats`. Трекер у всіх сторінках.
+- GoAccess щогодини (cron) → `/var/lib/criptobot/goaccess/` (боти й сканери по днях), без публічного доступу.
+- `sitemap.xml`, `robots.txt`, `/feed.xml`, Open Graph, Twitter Card, schema.org Article — у збірці; IndexNow-пінг
+  і Telegram-автопостинг (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID` у `/etc/criptobot/site.env`) — `promote.py`.
+- `GET /api/stats?days=1..90` з `Authorization: Bearer <STATS_TOKEN>` — для Пульта (site/chat/stats.py).

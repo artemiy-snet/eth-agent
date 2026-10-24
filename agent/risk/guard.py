@@ -34,6 +34,9 @@ class RiskParams:
     max_open_risk_pct: Decimal = D("2")          # сума (вхід − стоп) × qty по всіх позиціях
     stale_after_s: int = 60
     max_balance_diff_pct: Decimal = D("0.5")
+    # гіпотези з «25 правил трейдера» (за замовчуванням вимкнено; перевірка — група бектестів rules25)
+    dd_half_pct: Decimal = D("0")          # просадка від піку ≥ X % → нові входи вдвічі менші (до відновлення до X/2 %)
+    daily_max_losses: int = 0              # N збиткових угод за добу UTC → без нових входів до кінця доби
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,9 @@ class RiskGuard:
     pause_reason: str = ""
     killed: bool = False
     kill_reason: str = ""
+    half_size: bool = False
+    day_losses: int = 0
+    loss_day: int = -1
     events: list[tuple[int, str]] = field(default_factory=list)
 
     # --- події ---------------------------------------------------------------------------
@@ -70,6 +76,14 @@ class RiskGuard:
         if d != self.day:
             self.day, self.day_start_equity = d, equity
         self.peak_equity = max(self.peak_equity, equity)
+        if self.p.dd_half_pct > 0 and self.peak_equity > 0:
+            ddh = (self.peak_equity - equity) / self.peak_equity * HUNDRED
+            if not self.half_size and ddh >= self.p.dd_half_pct:
+                self.half_size = True
+                self.events.append((ts, f"HALF dd {ddh:.2f}%"))
+            elif self.half_size and ddh < self.p.dd_half_pct / 2:
+                self.half_size = False
+                self.events.append((ts, "FULL size restored"))
         if not self.killed and self.peak_equity > 0:
             dd = (self.peak_equity - equity) / self.peak_equity * HUNDRED
             if dd >= self.p.max_dd_pct:
@@ -84,7 +98,18 @@ class RiskGuard:
         if len(self.order_ts) > self.p.max_orders_per_hour:
             self._pause(ts, HOUR, "orders_per_hour")
 
+    @property
+    def size_mult(self) -> Decimal:
+        """Множник розміру нових входів від запобіжників (≤ 1)."""
+        return D("0.5") if self.half_size else D(1)
+
     def on_trade_closed(self, ts: int, pnl: Decimal) -> None:
+        if self.p.daily_max_losses > 0 and pnl < 0:
+            d = ts // DAY
+            self.day_losses = self.day_losses + 1 if d == self.loss_day else 1
+            self.loss_day = d
+            if self.day_losses >= self.p.daily_max_losses:
+                self._pause(ts, (d + 1) * DAY - ts, f"losses_today {self.day_losses}")
         self.consecutive_losses = self.consecutive_losses + 1 if pnl < 0 else 0
         if self.consecutive_losses >= self.p.max_consecutive_losses:
             self._pause(ts, self.p.losses_pause_h * HOUR, f"losses_in_row {self.consecutive_losses}")

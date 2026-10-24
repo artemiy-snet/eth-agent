@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections import Counter
 from decimal import Decimal
 
@@ -91,6 +92,14 @@ def run_v3(df: pd.DataFrame, p: v3.V3Params, rp: RiskParams = RiskParams(),
                              if b.phase is v3.Phase.LONG and tick.price > b.stop_px), ZERO)
             ctx = RiskContext(ts=tick.ts, equity=state.equity(tick.price), eth_value=eth_value,
                               open_risk=open_risk)
+            if it.side is Side.BUY and risk.size_mult < 1:          # правило «просадка → розмір удвічі»
+                from agent.money import floor_to_step
+                q = floor_to_step(it.qty * risk.size_mult, p.qty_step)
+                if q * it.price < p.min_notional:
+                    vetoes["half_size_too_small"] += 1
+                    strategy.on_reject(state, it.bot_id)
+                    continue
+                it = dataclasses.replace(it, qty=q, quote_qty=None if it.quote_qty is None else it.quote_qty * risk.size_mult)
             veto = risk.check(it, ctx)
             if veto:
                 vetoes[veto.split(":")[0]] += 1

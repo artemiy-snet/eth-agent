@@ -147,6 +147,8 @@ class RiskCfg(BaseModel):
     move_pause_min: int = 15
     max_spread_pct: Decimal = Decimal("0.1")
     max_open_risk_pct: Decimal = Decimal("2")
+    dd_half_pct: Decimal = Decimal("0")
+    daily_max_losses: int = 0
 
 
 class BacktestCfg(BaseModel):

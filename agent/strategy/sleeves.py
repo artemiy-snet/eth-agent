@@ -54,6 +54,18 @@ for _k in ("B", "B1", "Bm"):
     for _s, _o in SW.items():
         SLEEVES[f"{_k}_{_s}"] = {**SLEEVES[_k], "label": SLEEVES[_k]["label"] + f" + стоп під прострілом ({_s})",
                                 "set": SLEEVES[_k]["set"] + _o}
+# «25 правил трейдера» (пост із TikTok, 2026-10-24): правило 21 — просадка 10 % від піку → розмір удвічі;
+# правило 10 — дві збиткові угоди за день → стоп до кінця дня. Гіпотези для бектесту (група rules25).
+R25 = {"п21": ["risk.dd_half_pct=10", "risk.max_dd_pct=25"],          # замість зупинки на −10 % — половина розміру, жорсткий стоп на −25 %
+       "п21м": ["risk.dd_half_pct=5"],                               # половина вже з −5 %, kill switch як був
+       "п10": ["risk.daily_max_losses=2"]}
+for _k in ("B", "B1", "Bm", "C", "Cm"):
+    for _s, _o in R25.items():
+        if _k in ("C", "Cm") and _s == "п10":
+            continue
+        extra = [x for x in _o if not (_k in ("C", "Cm") and x.startswith("risk.max_dd_pct"))]   # C без kill switch
+        SLEEVES[f"{_k}_{_s}"] = {**SLEEVES[_k], "label": SLEEVES[_k]["label"] + f" + правило {_s[1:]}",
+                                "set": SLEEVES[_k]["set"] + extra}
 BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai" and "pair" not in v}
 
 PRESETS: dict[str, dict[str, float]] = {
@@ -81,9 +93,17 @@ for _s in SW:
     PRESETS[f"live_міні_{_s}"] = {f"Bm_{_s}": 0.5, "Cm": 0.5}
 
 BASE_PRESETS = ["поточний", "обережний", "збалансований", "агресивний", "лише_режим"]
-_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE and "_зн" not in k]
+_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE and "_зн" not in k and "_п" not in k]
+for _s in R25:
+    PRESETS[f"обережний_{_s}"] = {f"B_{_s}": 1.0}
+    PRESETS[f"збалансований_{_s}"] = {f"B1_{_s}": 0.7, "C": 0.3}
+    PRESETS[f"live_міні_{_s}"] = {f"Bm_{_s}": 0.5, "Cm": 0.5}
+for _s in ("п21", "п21м"):
+    PRESETS[f"збалансований_{_s}_усі"] = {f"B1_{_s}": 0.7, f"C_{_s}": 0.3}
+    PRESETS[f"live_міні_{_s}_усі"] = {f"Bm_{_s}": 0.5, f"Cm_{_s}": 0.5}
 _SWG = ["обережний", "збалансований", "live_міні"]
 GROUPS = {"sweep": _SWG + [f"{b}_{s}" for b in _SWG for s in SW],
+          "rules25": _SWG + [k for k in PRESETS if any(k.startswith(b + "_п") for b in _SWG)],
           "all": [k for k in _BT if k != "live_міні"], "base": BASE_PRESETS, "macro": [k for k in _BT if k != "live_міні"]}
 
 

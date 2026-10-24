@@ -15,6 +15,9 @@ new=$(git rev-parse HEAD)
 if [ "$old" != "$new" ]; then
   "$PY" site/editor.py commits || echo "редакція: помилка, спробую наступного разу"
 fi
+if [ -f "$DATA/diary_days.json" ]; then
+  "$PY" site/editor.py weekly || echo "редакція: тижневий щоденник — помилка"
+fi
 if [ "$old" != "$new" ] || [ -f "$DATA/rebuild" ] || [ ! -f "$WWW/index.html" ] || [ "${1:-}" = "--force" ]; then
   rm -f "$DATA/rebuild"
   tmp=$(mktemp -d /opt/criptobot/build.XXXXXX)

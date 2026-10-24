@@ -114,9 +114,10 @@ def write(prompt: str, out_dir: Path, author: str = "", opener=urllib.request.ur
 
 
 def from_post(text: str, out_dir: Path, **kw) -> Path:
-    prompt = (f"{ABOUT}\n\nНотатка автора проєкту, яку треба перетворити на статтю (зберігай його факти й інтонацію, "
-              f"можна впорядкувати й пояснити терміни):\n<note>\n{text.strip()[:6000]}\n</note>")
-    return write(prompt, out_dir, author="автор проєкту", **kw)
+    kw.setdefault("author", "Автор проєкту")
+    prompt = (f"{ABOUT}\n\nНотатка автора проєкту, яку треба перетворити на статтю ВІД ПЕРШОЇ ОСОБИ автора (я, автор) — "
+              f"зберігай його факти й інтонацію, можна впорядкувати й пояснити терміни:\n<note>\n{text.strip()[:6000]}\n</note>")
+    return write(prompt, out_dir, **kw)
 
 
 def from_commit(n: dict, out_dir: Path, **kw) -> Path:
@@ -124,6 +125,41 @@ def from_commit(n: dict, out_dir: Path, **kw) -> Path:
     prompt = (f"{ABOUT}\n\nЗміна в репозиторії (заголовок і опис коміту), про яку треба написати коротку статтю для читачів:\n"
               f"<commit>\n{head}\n\n{n['body'][:4000]}\n</commit>")
     return write(prompt, out_dir, **kw)
+
+
+def run_weekly(data: Path, out_dir: Path, now: float | None = None, **kw) -> Path | None:
+    """Раз на тиждень: «Щоденник експерименту. Тиждень N» від імені автора — за даними, що надсилає бот (лише відсотки)."""
+    now = time.time() if now is None else now
+    st_path = data / "editor_weekly.json"
+    try:
+        st = json.loads(st_path.read_text())
+    except (OSError, ValueError):
+        st = {"last_day": "2026-10-24", "n": 1}                 # тиждень 1 написаний вручну (site/articles)
+    try:
+        days = json.loads((data / "diary_days.json").read_text())
+    except (OSError, ValueError):
+        return None
+    new = {d: v for d, v in sorted(days.items()) if d > st["last_day"]}
+    today = time.strftime("%Y-%m-%d", time.gmtime(now))
+    full = {d: v for d, v in new.items() if d < today}          # лише завершені дні
+    if len(full) < 7:
+        return None
+    week = dict(list(full.items())[:7])
+    n = st["n"] + 1
+    lines = [f"{d}: бот {v.get('idx')} (індекс, старт=100), ETH {v.get('eth')}; закриті угоди: "
+             f"{[(t.get('sleeve'), t.get('pnl_pct')) for t in v.get('trades') or []]}; відкритих позицій {v.get('positions')}; "
+             f"ШІ {v.get('regime')}; запобіжник {'так' if v.get('killed') else 'ні'}" for d, v in week.items()]
+    prompt = (f"{ABOUT}\n\nНапиши статтю «Щоденник експерименту. Тиждень {n}» від першої особи автора проєкту (я, автор), "
+              f"рубрика «Щоденник експерименту», обкладинка night або morning. Чесно: що зробив бот за тиждень, як це "
+              f"порівняти з ETH, що це означає і чого не означає (замало даних для висновків, якщо угод мало). Лише факти з даних "
+              f"нижче, без сум у доларах.\n<week>\n" + "\n".join(lines) + "\n</week>")
+    p = write(prompt, out_dir, author="Автор проєкту", **kw)
+    t = p.read_text(encoding="utf-8")
+    t = re.sub(r"^title: .*$", f"title: Щоденник експерименту. Тиждень {n}", t, count=1, flags=re.M)
+    t = re.sub(r"^rubric: .*$", "rubric: Щоденник експерименту", t, count=1, flags=re.M)
+    p.write_text(t, encoding="utf-8")
+    st_path.write_text(json.dumps({"last_day": list(week)[-1], "n": n}))
+    return p
 
 
 def run_commits(out_dir: Path, state: Path, **kw) -> int:
@@ -165,6 +201,9 @@ def main() -> None:
         if state.exists() and not os.environ.get("ANTHROPIC_API_KEY"):
             return
         if run_commits(out, state):
+            (data / "rebuild").touch()
+    elif cmd == "weekly":
+        if os.environ.get("ANTHROPIC_API_KEY") and run_weekly(data, out):
             (data / "rebuild").touch()
     elif cmd == "post":
         print(from_post(sys.stdin.read(), out))

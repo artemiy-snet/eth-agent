@@ -161,6 +161,145 @@ def myths() -> list[dict]:
     return out
 
 
+# --- щоденник бота ------------------------------------------------------------------------------
+def load_diary() -> tuple[dict | None, dict]:
+    d = Path(os.environ.get("DATA_DIR", "/var/lib/criptobot"))
+    try:
+        snap = json.loads((d / "diary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        snap = None
+    try:
+        days = json.loads((d / "diary_days.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        days = {}
+    return snap, days
+
+
+def kyiv(ts_ms: float, fmt: str = "%d.%m.%Y %H:%M") -> str:
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.fromtimestamp(ts_ms / 1000, ZoneInfo("Europe/Kyiv")).strftime(fmt)
+    except Exception:  # noqa: BLE001 — без бази часових поясів
+        return time.strftime(fmt, time.gmtime(ts_ms / 1000)) + " UTC"
+
+
+def pct(x, d: int = 1) -> str:
+    if x is None:
+        return "—"
+    return ("+" if x > 0 else "−" if x < 0 else "") + f"{abs(x):.{d}f}".replace(".", ",") + " %"
+
+
+def svg_chart(eq: list, h: int = 300, small: bool = False) -> str:
+    """Лінії «портфель» і «просто тримати ETH» (індекс, старт = 100) — inline SVG, адаптивний."""
+    if len(eq) < 2:
+        return '<p class="muted">Графік з\'явиться, щойно назбирається кілька точок.</p>'
+    w, pad = 900, (8 if small else 36)
+    xs = [p[0] for p in eq]
+    ys = [v for p in eq for v in (p[1], p[2])] + [100]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    m = (y1 - y0) * 0.12 or 1
+    y0, y1 = y0 - m, y1 + m
+    X = lambda x: pad + (x - x0) / ((x1 - x0) or 1) * (w - 2 * pad)
+    Y = lambda y: h - pad - (y - y0) / (y1 - y0) * (h - 2 * pad)
+    line = lambda i: " ".join(f"{X(p[0]):.1f},{Y(p[i]):.1f}" for p in eq)
+    base = f'<line x1="{pad}" x2="{w - pad}" y1="{Y(100):.1f}" y2="{Y(100):.1f}" class="base"/>'
+    labels = "" if small else (
+        f'<text x="{pad}" y="{h - 8}" class="lbl">{date_uk(x0 // 1000)}</text>'
+        f'<text x="{w - pad}" y="{h - 8}" class="lbl" text-anchor="end">{date_uk(x1 // 1000)}</text>'
+        f'<text x="{w - pad + 2}" y="{Y(eq[-1][1]) + 4:.1f}" class="lbl pf" text-anchor="end" dy="-10">{pct(eq[-1][1] - 100)}</text>'
+        f'<text x="{w - pad + 2}" y="{Y(eq[-1][2]) + 4:.1f}" class="lbl eth" text-anchor="end" dy="16">ETH {pct(eq[-1][2] - 100)}</text>')
+    return (f'<svg class="chart{" small" if small else ""}" viewBox="0 0 {w} {h}" role="img" '
+            f'aria-label="Капітал бота проти ETH: {pct(eq[-1][1] - 100)} і {pct(eq[-1][2] - 100)} від старту">'
+            f'{base}<polyline class="eth" points="{line(2)}"/><polyline class="pf" points="{line(1)}"/>'
+            f'<circle class="pf" cx="{X(eq[-1][0]):.1f}" cy="{Y(eq[-1][1]):.1f}" r="5"/>{labels}</svg>')
+
+
+REGIME = {"NORMAL": "звичайний режим", "CAUTION": "обережно — покупки вдвічі менші", "RISK_OFF": "без нових покупок"}
+
+
+def diary_stats(snap: dict) -> dict:
+    eq = snap.get("equity") or []
+    tr = [t for t in snap.get("trades") or [] if t.get("pnl_pct") is not None]
+    wins = sum(1 for t in tr if t["pnl_pct"] > 0)
+    since = snap.get("since") or (eq[0][0] if eq else snap.get("ts"))
+    return {"pf": eq[-1][1] - 100 if eq else None, "eth": eq[-1][2] - 100 if eq else None,
+            "days": max(1, int((snap["ts"] - since) / 86_400_000) + 1), "since": since, "n": len(tr),
+            "win": (wins / len(tr) * 100) if tr else None,
+            "regime": (snap.get("ai") or {}).get("regime")}
+
+
+def promo_block() -> str:
+    """Рекламний/партнерський блок (site/config.json → promo) і кнопка «Дякую» (donate_url). Порожньо — нічого не показуємо."""
+    out = ""
+    p = CFG.get("promo") or {}
+    if p.get("text") and p.get("url"):
+        out += (f'<aside class="promo"><span class="tag">{esc(p.get("label") or "Реклама")}</span><p>{esc(p["text"])}</p>'
+                f'<a class="btn" href="{esc(p["url"])}" rel="sponsored noopener" target="_blank">{esc(p.get("button") or "Детальніше")}</a></aside>')
+    if CFG.get("donate_url"):
+        out += (f'<aside class="promo thanks"><p>Журнал і бот безкоштовні та з відкритим кодом. Якщо проєкт тобі корисний — '
+                f'можна подякувати.</p><a class="btn" href="{esc(CFG["donate_url"])}" rel="noopener" target="_blank">Подякувати</a></aside>')
+    return out
+
+
+def diary_block(snap: dict | None) -> str:
+    """Блок на головній: міні-графік і три числа."""
+    if not snap:
+        return ""
+    st = diary_stats(snap)
+    return f"""<a class="diary-card" href="diary.html"><div><span class="rubric">Щоденник бота</span>
+<h3>День {st['days']} на справжніх грошах</h3>
+<p class="nums"><b class="pf">{pct(st['pf'])}</b> бот <b class="eth">{pct(st['eth'])}</b> ETH <b>{st['n']}</b> угод</p>
+<p class="muted small">Дані надходять від бота автоматично. Оновлено {kyiv(snap['ts'], '%d.%m %H:%M')} (Київ)</p></div>
+{svg_chart(snap.get('equity') or [], 160, small=True)}</a>"""
+
+
+def diary_page(snap: dict | None, days: dict) -> str:
+    if not snap:
+        return inner("Щоденник бота", '<div class="prose"><p>Щоденник з\'явиться, щойно бот надішле перші дані. '
+                     'Він оновлюється сам кожні 30 хвилин.</p></div>', cover="night")
+    st = diary_stats(snap)
+    pos = "".join(f"<tr><td>{esc(str(p.get('sleeve')))}</td><td>{esc(str(p.get('coin')))}</td>"
+                  f"<td>{date_uk(int(p['since']) // 1000) if p.get('since') else '—'}</td>"
+                  f"<td class=\"{'pos' if (p.get('pnl_pct') or 0) >= 0 else 'neg'}\">{pct(p.get('pnl_pct'), 2)}</td></tr>"
+                  for p in snap.get("positions") or [])
+    pos = (f'<table><tr><th>Рукав</th><th>Монета</th><th>Відкрито</th><th>Зараз</th></tr>{pos}</table>' if pos
+           else '<p class="muted">Відкритих позицій немає — бот у доларах і чекає свого сигналу.</p>')
+    trs = "".join(f"<tr><td>{date_uk(int(t['exit_ts']) // 1000)}</td><td>{esc(str(t.get('sleeve') or '—'))}</td>"
+                  f"<td class=\"{'pos' if (t.get('pnl_pct') or 0) >= 0 else 'neg'}\">{pct(t.get('pnl_pct'), 2)}</td>"
+                  f"<td>{esc(str(t.get('reason') or ''))}</td></tr>" for t in snap.get("trades") or [])
+    trs = (f'<table><tr><th>Закрито</th><th>Рукав</th><th>Результат</th><th>Причина</th></tr>{trs}</table>' if trs
+           else '<p class="muted">Закритих угод ще немає. Бот торгує рідко — одна-дві угоди на місяць на рукав.</p>')
+    log = []
+    since_day = time.strftime("%Y-%m-%d", time.gmtime(st["since"] / 1000))
+    for day, d in sorted(days.items(), reverse=True)[:60]:
+        n = (calendar.timegm(time.strptime(day, "%Y-%m-%d")) - calendar.timegm(time.strptime(since_day, "%Y-%m-%d"))) // 86400 + 1
+        if n < 1:
+            continue
+        tr = d.get("trades") or []
+        tr_s = ("Закрито угод: " + ", ".join(f"{esc(str(t.get('sleeve') or ''))} {pct(t.get('pnl_pct'), 2)}" for t in tr) + ". ") if tr else ""
+        reg = REGIME.get(d.get("regime") or "", "")
+        log.append(f'<li><time>День {n} · {date_uk(calendar.timegm(time.strptime(day, "%Y-%m-%d")))}</time>'
+                   f'<p>Бот {pct((d.get("idx") or 100) - 100)} від старту, ETH {pct((d.get("eth") or 100) - 100)}. {tr_s}'
+                   f'Відкритих позицій: {d.get("positions", 0)}.{" ШІ: " + reg + "." if reg else ""}'
+                   f'{" ⛔ Спрацював запобіжник." if d.get("killed") else ""}</p></li>')
+    body = f"""<div class="stats"><div><b class="pf">{pct(st['pf'])}</b><span>бот від старту</span></div>
+<div><b class="eth">{pct(st['eth'])}</b><span>просто тримати ETH</span></div>
+<div><b>{st['days']}</b><span>днів на справжніх грошах</span></div>
+<div><b>{st['n']}</b><span>закритих угод{f", виграшних {st['win']:.0f} %" if st['win'] is not None else ""}</span></div></div>
+{svg_chart(snap.get('equity') or [], 420)}
+<p class="legend"><span class="pf">Бот</span> <span class="eth">Просто тримати ETH</span> Обидві лінії — індекс, старт = 100.
+Зміна суми, з якою працює бот, не рахується прибутком чи збитком.</p>
+<h2 class="section">Відкриті позиції</h2>{pos}
+<h2 class="section">Закриті угоди</h2>{trs}
+<h2 class="section">День за днем</h2><ol class="daylog">{''.join(log) or '<li><p class="muted">Записи з\'являться з першого повного дня.</p></li>'}</ol>
+<p class="muted small">Публікуються лише відсотки: суми в доларах, кількість монет, ключі й адреси не передаються.
+ШІ-режим: {esc(REGIME.get(st['regime'] or '', st['regime'] or '—'))}. Версія бота {esc(str(snap.get('version', '')))}.
+Оновлено {kyiv(snap['ts'])} (Київ).</p>"""
+    return inner("Щоденник бота", body, "Наживо", "night",
+                 "Справжні гроші, справжні угоди. Бот сам надсилає сюди свій стан кожні 30 хвилин.")
+
+
 # --- каркас сторінки ----------------------------------------------------------------------------
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">')
@@ -168,7 +307,7 @@ THEME_JS = ("<script>try{var t=localStorage.getItem('cb_theme');if(t)document.do
 
 
 def nav() -> str:
-    items = [("index", "Журнал"), ("articles", "Статті"), ("news", "Хроніка"), ("myths", "Міфи"),
+    items = [("index", "Журнал"), ("diary", "Щоденник бота"), ("articles", "Статті"), ("news", "Хроніка"), ("myths", "Міфи"),
              ("install", "Встановлення"), ("forum", "Форум"), ("chat", "Запитати ШІ")]
     return "".join(f'<a href="{k}.html">{t}</a>' for k, t in items)
 
@@ -215,7 +354,7 @@ def scene(sid: str, clip: str, cap: str, sub: str, story: str, tone: str = "") -
 
 
 # --- головна: фільм + ранковий журнал --------------------------------------------------------------
-def index_page(items: list[dict], arts: list[dict], ms: list[dict]) -> str:
+def index_page(items: list[dict], arts: list[dict], ms: list[dict], snap: dict | None = None) -> str:
     cover = f"""<section class="scene cover on" id="top">
 <div class="stage">{media('robot', 'bg')}<div class="veil"></div>
 <div class="masthead"><p class="issue">{issue_line()}</p><h1 class="title">ETH-Агент</h1>
@@ -268,8 +407,8 @@ def index_page(items: list[dict], arts: list[dict], ms: list[dict]) -> str:
 
     paper = f"""<div class="dawn" aria-hidden="true"></div>
 <section class="paper" id="journal"><div class="col wide">
-<h2 class="section">У цьому випуску</h2>{feature}<div class="cards">{cards}</div>
-<div class="split"><div><h2 class="section">Хроніка</h2><ol class="chronicle short">{chron}</ol>
+{diary_block(snap)}<h2 class="section">У цьому випуску</h2>{feature}<div class="cards">{cards}</div>
+{promo_block()}<div class="split"><div><h2 class="section">Хроніка</h2><ol class="chronicle short">{chron}</ol>
 <a class="more" href="news.html">Уся хроніка</a></div>
 <div><h2 class="section">Розвінчуємо міфи</h2><p class="muted">Стратегії з TikTok, які нам надсилають, — і що показала перевірка.</p>
 <ol class="myths">{mys}</ol><a class="more" href="myths.html">Усі розбори</a></div></div>
@@ -295,7 +434,8 @@ def inner(title: str, body: str, kicker: str = "", cover: str | None = None, lea
 
 def article_page(a: dict) -> str:
     by = f'<p class="by">{esc(a["author"])}</p>' if a.get("author") else ""
-    return inner(a["title"], f'<p class="dateline">{date_uk(a["ts"])}</p>{by}<div class="prose drop">{md_to_html(a["body"])}</div>',
+    return inner(a["title"], f'<p class="dateline">{date_uk(a["ts"])}</p>{by}<div class="prose drop">{md_to_html(a["body"])}</div>'
+                             f'{promo_block()}',
                  a["rubric"], a["cover"], a["lead"])
 
 
@@ -366,8 +506,10 @@ def build(out: Path) -> None:
     (out / "kb").mkdir(parents=True)
     shutil.copytree(SITE / "assets", out / "assets")
     items, arts, ms = news(), articles(), myths()
+    snap, days = load_diary()
     w = lambda name, html_: (out / name).write_text(html_, encoding="utf-8")
-    w("index.html", page("index", f"{CFG['title']} — журнал", index_page(items, arts, ms), home=True))
+    w("index.html", page("index", f"{CFG['title']} — журнал", index_page(items, arts, ms, snap), home=True))
+    w("diary.html", page("diary", "Щоденник бота", diary_page(snap, days), og_img="night"))
     w("news.html", page("news", "Хроніка", news_page(items)))
     w("articles.html", page("articles", "Статті", articles_page(arts)))
     w("myths.html", page("myths", "Розвінчуємо міфи", myths_page(ms), og_img="desk"))

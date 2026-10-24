@@ -192,3 +192,41 @@ pre code{background:none;padding:0}
   .frame video,.hero-img img,.down span{animation:none}
   .cap,.sub,.question,.masthead>*{transition:none;opacity:1;filter:none;transform:none}
 }
+
+/* ---------- щоденник бота ---------- */
+.chart{width:100%;height:auto;display:block;margin:10px 0 6px}
+.chart polyline{fill:none;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+.chart polyline.pf{stroke:var(--screen)}.chart polyline.eth{stroke:var(--lamp);stroke-width:2;opacity:.75}
+.chart circle.pf{fill:var(--screen)}.chart .base{stroke:var(--mute);stroke-dasharray:5 6;opacity:.5}
+.chart .lbl{font:500 22px var(--text);fill:var(--mute)}.chart .lbl.pf{fill:var(--screen);font-weight:600}.chart .lbl.eth{fill:var(--lamp)}
+.chart.small .base{opacity:.35}
+.pf{color:var(--screen)}.eth{color:var(--lamp)}
+.paper .pf{color:#13865d}.paper .eth{color:#b5650f}
+.paper .chart polyline.pf{stroke:#13865d}.paper .chart circle.pf{fill:#13865d}.paper .chart polyline.eth{stroke:#c9741b}
+.paper .chart .lbl.pf{fill:#13865d}.paper .chart .lbl.eth{fill:#b5650f}
+.pos{color:#13865d}.neg{color:#c0392b}
+:root[data-theme="night"] .pos{color:var(--screen)}:root[data-theme="night"] .neg{color:#ff8a7f}
+.diary-card{display:grid;grid-template-columns:1fr 1.2fr;gap:24px;align-items:center;margin-top:44px;padding:22px 24px;border-radius:24px;
+  background:var(--night);color:var(--ink-n);text-decoration:none}
+.diary-card h3{font:600 clamp(22px,3vw,30px)/1.15 var(--display);margin:.2em 0 .3em;letter-spacing:-.02em}
+.diary-card .rubric{color:var(--lamp)}.diary-card .muted{color:var(--mute-n)}
+.diary-card .nums{font-size:17px;margin:.3em 0}.diary-card .nums b{font:700 24px var(--display);margin-right:4px}
+.diary-card .nums b:not(:first-child){margin-left:14px}
+.diary-card .pf{color:var(--screen)}.diary-card .eth{color:var(--lamp)}
+.diary-card .chart polyline.pf{stroke:var(--screen)}.diary-card .chart circle.pf{fill:var(--screen)}.diary-card .chart polyline.eth{stroke:var(--lamp)}
+@media (max-width:760px){.diary-card{grid-template-columns:1fr}}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:10px 0 18px}
+.stats div{background:var(--bg-2);border-radius:18px;padding:14px 16px}
+.stats b{display:block;font:700 28px/1.1 var(--display);letter-spacing:-.02em}.stats span{font-size:14px;color:var(--mute)}
+.legend{font-size:14px;color:var(--mute)}.legend span{font-weight:600;margin-right:12px}
+.legend span::before{content:"";display:inline-block;width:18px;height:3px;border-radius:2px;background:currentColor;vertical-align:middle;margin-right:6px}
+.inner table{border-collapse:collapse;width:100%;font-size:15.5px;display:block;overflow-x:auto;margin:.6em 0 1em}
+.inner th,.inner td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}.inner th{color:var(--mute);font-weight:600}
+.daylog{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.daylog li{padding:8px 0 10px 18px;position:relative}
+.daylog li::before{content:"";position:absolute;left:-6px;top:15px;width:10px;height:10px;border-radius:50%;background:var(--lamp)}
+.daylog time{font-weight:600;font-size:15px}.daylog p{margin:2px 0;color:var(--mute);font-size:16px}
+.promo{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:36px 0 0;padding:16px 20px;border-radius:18px;
+  background:var(--bg-2);border:1px dashed color-mix(in srgb,var(--mute) 45%,transparent)}
+.promo p{margin:0;flex:1 1 260px}.promo .tag{font-size:12.5px;color:var(--mute);flex-basis:100%}
+.promo.thanks{border-style:solid}

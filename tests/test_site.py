@@ -134,7 +134,7 @@ def test_editor_turns_note_into_article(tmp_path, monkeypatch):
     p = ed.from_post("Сьогодні бот уперше продав ETH з прибутком, +0,4 $", tmp_path, opener=op, charge=used.append)
     t = p.read_text(encoding="utf-8")
     assert p.name.endswith("pershyi-prodazh-z-prybutkom.md") and "rubric: Щоденник експерименту" in t and "cover: morning" in t
-    assert "author: автор проєкту" in t and used and "уперше продав" in sent[0]["messages"][0]["content"]
+    assert "author: Автор проєкту" in t and used and "уперше продав" in sent[0]["messages"][0]["content"]
     b = _load("site_build3", "site/build.py")
     a = b.parse_article(p)
     assert a["slug"] == "a-" + p.stem and a["rubric"] == "Щоденник експерименту"
@@ -154,3 +154,28 @@ def test_telegram_post_without_token_explains(tmp_path):
     from agent.live.tg_bot import TelegramControl
     t = TelegramControl("t", "1", tmp_path, overview=lambda: {}, trades=lambda: [])
     assert "токен редакції" in t.handle("/post Сьогодні бот уперше продав ETH з прибутком")
+
+
+def test_diary_index_ignores_budget_change_and_feeds_site(tmp_path, monkeypatch):
+    from agent.live.site_feed import equity_index
+    rows = [[0, 20.0, 2400, 20], [1, 20.4, 2448, 20], [2, 17.4, 2448, 17], [3, 17.51, 2500, 17]]
+    eq = equity_index(rows)
+    assert eq[0][1:] == [100.0, 100.0] and abs(eq[2][1] - 102.0) < 0.01          # зменшення бюджету 20 → 17 — не збиток
+    assert abs(eq[3][1] - 102.0 * 17.51 / 17.4) < 0.01 and abs(eq[3][2] - 2500 / 2400 * 100) < 0.01
+    snap = {"v": 1, "ts": 3 * 86_400_000 - 1, "since": 0, "equity": [[0, 100, 100], [86_400_000, 101, 99], [3 * 86_400_000, 102.5, 104.2]],
+            "positions": [{"sleeve": "Cm", "coin": "ETH", "since": 1, "pnl_pct": 2.2}],
+            "trades": [{"sleeve": "Bm", "entry_ts": 0, "exit_ts": 3 * 86_400_000 - 5, "pnl_pct": 1.4, "reason": "take"}],
+            "ai": {"regime": "NORMAL"}, "version": "0.12.0-beta"}
+    assert chat.handle_diary("tok", "Bearer bad", snap, tmp_path)[0] == 401
+    assert chat.handle_diary("tok", "Bearer tok", {"v": 2}, tmp_path)[0] == 400
+    assert chat.handle_diary("tok", "Bearer tok", snap, tmp_path, now=10)[0] == 200
+    days = json.loads((tmp_path / "diary_days.json").read_text())
+    assert list(days) == ["1970-01-03"] and days["1970-01-03"]["trades"][0]["pnl_pct"] == 1.4
+    assert (tmp_path / "rebuild").exists()
+    pytest.importorskip("markdown")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    b = _load("site_build4", "site/build.py")
+    b.build(tmp_path / "out")
+    d = (tmp_path / "out" / "diary.html").read_text(encoding="utf-8")
+    assert "+2,5 %" in d and "+4,2 %" in d and "<svg" in d and "Bm" in d and "$" not in d.split("<main")[1].split("</main>")[0]
+    assert "День 3 на справжніх грошах" in (tmp_path / "out" / "index.html").read_text(encoding="utf-8")

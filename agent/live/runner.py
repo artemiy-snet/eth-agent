@@ -25,6 +25,7 @@ from agent.live.broker import ExchangeBroker, ExecResult, PaperBroker, base_asse
 from agent.live.journal import Journal, load_state, save_state
 from agent.live.notify import Notifier
 from agent.live.settings import LiveSettings
+from agent.live.site_feed import site_feed
 from agent.money import HUNDRED, ZERO, D
 from agent.risk.guard import RiskContext, RiskGuard
 from agent.strategy import v3
@@ -404,6 +405,7 @@ class Agent:
                 self.tick()
                 record_equity(self, [self], self.now())
                 heartbeat_ping(self, self.now())
+                site_feed(self, [self], self.now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -738,6 +740,7 @@ class Portfolio:
                 self.tick()
                 record_equity(self, self.agents, self.agents[0].now())
                 heartbeat_ping(self, self.agents[0].now())
+                site_feed(self, self.agents, self.agents[0].now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -818,6 +821,9 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     obj.analyst = shadow.from_settings(settings.analyst, sec, journal, home, notifier)
     obj.bnb_fees = None
     obj.healthcheck_url = sec.get("HEALTHCHECK_URL", "") if sec.get("HEALTHCHECK_URL", "").startswith("https://") else ""
+    # щоденник на сайті — лише з реальної торгівлі (live), лише відсотки
+    obj.site_token = sec.get("SITE_POST_TOKEN", "") if live else ""
+    obj.site_url = sec.get("SITE_URL", "https://criptobot.store")
     if live:
         live_preflight(client, settings, journal, notifier)
         obj.bnb_fees = bnb_check(client, journal, notifier)

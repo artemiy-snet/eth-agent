@@ -3,13 +3,43 @@
   "title": "ETH-Агент",
   "tagline": "Відкритий бот для спотової торгівлі ETH на Binance — працює на звичайному Android-телефоні",
   "repo": "artemiy-snet/eth-agent",
-  "giscus": {"repo_id": "", "category": "General", "category_id": ""},
+  "giscus": {
+    "repo_id": "",
+    "category": "General",
+    "category_id": ""
+  },
   "donate_url": "",
   "docs": [
-    ["install", "PHONE.md", "Встановлення"],
-    ["strategies", "strategies.md", "Стратегії"],
-    ["backtests", "backtest_log.md", "Бектести"],
-    ["ideas", "IDEAS.md", "Розбори ідей"],
-    ["bible", "BIBLE.md", "Біблія проєкту"]
-  ]
+    [
+      "install",
+      "PHONE.md",
+      "Встановлення"
+    ],
+    [
+      "strategies",
+      "strategies.md",
+      "Стратегії"
+    ],
+    [
+      "backtests",
+      "backtest_log.md",
+      "Бектести"
+    ],
+    [
+      "ideas",
+      "IDEAS.md",
+      "Розбори ідей"
+    ],
+    [
+      "bible",
+      "BIBLE.md",
+      "Біблія проєкту"
+    ]
+  ],
+  "promo": {
+    "label": "Партнер",
+    "text": "",
+    "url": "",
+    "button": "Детальніше"
+  }
 }

@@ -225,6 +225,39 @@ def handle_post(token: str, auth: str, data: dict, data_dir: Path, limits: Limit
     return 200, {"ok": True, "file": path.name, "url": "/a-" + path.stem + ".html"}
 
 
+def handle_diary(token: str, auth: str, data, data_dir: Path, now: float | None = None) -> tuple[int, dict]:
+    """Знімок стану бота (agent/live/site_feed.py) → diary.json + підсумок дня в diary_days.json; сайт перезбирається
+    не частіше ніж раз на 25 хв."""
+    now = time.time() if now is None else now
+    if not token or not hmac.compare_digest(auth, f"Bearer {token}"):
+        return 401, {"error": "Невірний токен."}
+    if not isinstance(data, dict) or data.get("v") != 1 or not isinstance(data.get("equity"), list):
+        return 400, {"error": "Некоректний знімок."}
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tmp = data_dir / "diary.json.tmp"
+    tmp.write_text(json.dumps(data, ensure_ascii=False))
+    tmp.replace(data_dir / "diary.json")
+    eq = data["equity"]
+    day = time.strftime("%Y-%m-%d", time.gmtime((data.get("ts") or now * 1000) / 1000))
+    try:
+        days = json.loads((data_dir / "diary_days.json").read_text())
+    except (OSError, ValueError):
+        days = {}
+    trades = [t for t in data.get("trades", []) if isinstance(t, dict)]
+    import calendar
+    day_ms = calendar.timegm(time.strptime(day, "%Y-%m-%d")) * 1000
+    days[day] = {"idx": eq[-1][1] if eq else None, "eth": eq[-1][2] if eq else None,
+                 "trades": [t for t in trades if (t.get("exit_ts") or 0) >= day_ms],
+                 "positions": len(data.get("positions") or []), "regime": (data.get("ai") or {}).get("regime"),
+                 "killed": bool(data.get("killed"))}
+    (data_dir / "diary_days.json").write_text(json.dumps(dict(sorted(days.items())[-400:]), ensure_ascii=False))
+    mark = data_dir / "diary_built"
+    if not mark.exists() or now - mark.stat().st_mtime > 25 * 60:
+        mark.touch()
+        (data_dir / "rebuild").touch()
+    return 200, {"ok": True}
+
+
 def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = ""):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -245,6 +278,16 @@ def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = ""):
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
+            if self.path == "/api/diary":
+                n = int(self.headers.get("Content-Length") or 0)
+                if n <= 0 or n > 300_000:
+                    return self._json(413, {"error": "Завеликий запит."})
+                try:
+                    data = json.loads(self.rfile.read(n))
+                except ValueError:
+                    return self._json(400, {"error": "Некоректний запит."})
+                code, obj = handle_diary(post_token, self.headers.get("Authorization", ""), data, chat.limits.dir)
+                return self._json(code, obj)
             if self.path == "/api/post":
                 n = int(self.headers.get("Content-Length") or 0)
                 if n <= 0 or n > 40_000:

@@ -43,7 +43,8 @@ def goaccess_json(lines: list[str]) -> dict:
     if not lines or not shutil.which("goaccess"):
         return {}
     p = subprocess.run(["goaccess", "-", "--log-format=COMBINED", "-o", "json", "--no-progress", "--ignore-panel=OS"],
-                       input="".join(lines), capture_output=True, text=True, timeout=600)
+                       input="".join(lines), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=600)
     try:
         return json.loads(p.stdout)
     except ValueError:

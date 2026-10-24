@@ -174,6 +174,8 @@ class Chat:
             return 400, {"error": "Порожнє питання."}
         if len(q) > MAX_Q:
             return 400, {"error": f"Задовге питання (максимум {MAX_Q} символів)."}
+        if not self.key:
+            return 503, {"error": "Чат тимчасово вимкнено: на сервері не задано ключ ШІ."}
         why, left = self.limits.check(ip, now)
         if why:
             return 429, {"error": why}
@@ -334,8 +336,8 @@ def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = "", stat
 
 def main() -> None:
     key = env("ANTHROPIC_API_KEY", "")
-    if not key:
-        raise SystemExit("ANTHROPIC_API_KEY не задано (/etc/criptobot/chat.env)")
+    if not key:                     # без ключа чат вимкнено, але статистика, щоденник і прийом даних працюють
+        print("ANTHROPIC_API_KEY не задано (/etc/criptobot/chat.env) — чат «Запитати ШІ» вимкнено")
     data = Path(env("DATA_DIR", "/var/lib/criptobot"))
     data.mkdir(parents=True, exist_ok=True)
     limits = Limits(data, int(env("CHAT_PER_IP_HOUR", "10")), int(env("CHAT_PER_IP_DAY", "30")),

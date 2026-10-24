@@ -20,8 +20,31 @@ command -v apt-get >/dev/null || { echo "Потрібен Ubuntu або Debian (
 
 echo "== 1/7 Пакети"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
+# «apt_pkg»-помилку хука command-not-found (коли python3 на сервері підмінено іншою версією) пропускаємо — списки пакетів
+# при цьому оновлюються нормально
+apt-get update -q -o APT::Update::Post-Invoke-Success::= || true
 apt-get install -y -q nginx python3 python3-markdown git rsync certbot python3-certbot-nginx sudo
+
+# Python, якому доступний пакет markdown (python3-markdown ставиться для системного python3.10 в Ubuntu 22.04)
+PY=""
+for c in /usr/bin/python3 /usr/bin/python3.10 /usr/bin/python3.12 /usr/bin/python3.11; do
+  if [ -x "$c" ] && "$c" -c "import markdown" 2>/dev/null; then PY="$c"; break; fi
+done
+if [ -z "$PY" ]; then
+  echo "!! Не знайшов python з пакетом markdown. Спробую pip для /usr/bin/python3."
+  apt-get install -y -q python3-pip || true
+  /usr/bin/python3 -m pip install -q markdown || /usr/bin/python3 -m pip install -q --break-system-packages markdown
+  PY=/usr/bin/python3
+fi
+echo "   Python для збірки сайту: $PY ($("$PY" --version 2>&1))"
+
+# порт 80 має бути вільний для nginx (Apache зупиняємо нижче; інше — показуємо й зупиняємось)
+busy=$(ss -ltnpH '( sport = :80 )' 2>/dev/null | grep -v nginx || true)
+if [ -n "$busy" ] && ! echo "$busy" | grep -q apache2; then
+  echo "!! Порт 80 зайнятий не nginx:"; echo "$busy"
+  echo "   Зупини цю програму (напр. docker-контейнер старого сайту) і запусти скрипт ще раз."
+  exit 1
+fi
 
 if systemctl is-active --quiet apache2 2>/dev/null; then
   echo "!! На сервері працює Apache і займає порт 80. Зупиняю його (вимкнути назад: systemctl enable --now apache2)."
@@ -31,6 +54,7 @@ fi
 echo "== 2/7 Користувач і теки"
 id criptobot >/dev/null 2>&1 || useradd --system --home-dir "$BASE" --shell /usr/sbin/nologin criptobot
 mkdir -p "$BASE" "$WWW" "$DATA/articles" "$ETC"
+echo "$PY" > "$ETC/python"
 chown -R criptobot:criptobot "$BASE" "$WWW" "$DATA"
 
 echo "== 3/7 Код з GitHub"
@@ -69,7 +93,7 @@ echo "criptobot ALL=(root) NOPASSWD: /bin/systemctl restart criptobot-chat" > /e
 chmod 440 /etc/sudoers.d/criptobot
 visudo -cf /etc/sudoers.d/criptobot >/dev/null
 systemctl daemon-reload
-sudo -u criptobot env DATA_DIR="$DATA" ARTICLES_DIR="$DATA/articles" python3 "$BASE/repo/site/editor.py" commits
+sudo -u criptobot env DATA_DIR="$DATA" ARTICLES_DIR="$DATA/articles" "$PY" "$BASE/repo/site/editor.py" commits
 sudo -u criptobot bash "$BASE/repo/site/deploy/update.sh" --force
 systemctl enable --now criptobot-update.timer
 if grep -q '^ANTHROPIC_API_KEY=.\+' "$ETC/chat.env"; then

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import html
 import json
 import os
@@ -30,7 +31,7 @@ MONTHS_NOM = ["січень", "лютий", "березень", "квітень"
               "жовтень", "листопад", "грудень"]
 COVERS = ["robot", "brain", "button", "desk", "night", "morning", "finale"]
 
-SKIP = re.compile(r"^(Merge|ci[:(]|test[:(]|chore|wip\b|[\w./-]+\.ya?ml:)", re.I)
+SKIP = re.compile(r"^(Merge|ci[:(]|test[:(]|chore|wip\b|[\w./-]+\.(ya?ml|sh|py|json|css|js):)", re.I)
 TRAILER = re.compile(r"^(Co-Authored-By|Claude-Session|Signed-off-by):", re.I)
 
 
@@ -129,7 +130,7 @@ def parse_article(path: Path) -> dict | None:
         if k.strip():
             meta[k.strip()] = v.strip()
     try:
-        ts = int(time.mktime(time.strptime(meta.get("date", ""), "%Y-%m-%d")))
+        ts = calendar.timegm(time.strptime(meta.get("date", ""), "%Y-%m-%d")) + 12 * 3600   # полудень UTC — без зсуву дати
     except ValueError:
         ts = int(path.stat().st_mtime)
     cover = meta.get("cover", "robot")
@@ -174,8 +175,7 @@ def nav() -> str:
 
 def issue_line() -> str:
     t = time.gmtime()
-    start = time.gmtime(time.mktime(time.strptime("2026-10", "%Y-%m")))
-    n = (t.tm_year - start.tm_year) * 12 + t.tm_mon - start.tm_mon + 1
+    n = (t.tm_year - 2026) * 12 + t.tm_mon - 10 + 1          # випуск 1 — жовтень 2026, далі щомісяця
     return f"Випуск {n}, {MONTHS_NOM[t.tm_mon - 1]} {t.tm_year}"
 
 

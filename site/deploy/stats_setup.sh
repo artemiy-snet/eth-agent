@@ -28,14 +28,14 @@ mkdir -p "$BK"; chmod 700 /root/backups
 tar czf "$BK/nginx.tgz" -C / etc/nginx
 tar czf "$BK/www.tgz" -C / var/www/criptobot
 tar czf "$BK/etc-criptobot.tgz" -C / etc/criptobot
-git -C "$REPO" rev-parse HEAD > "$BK/repo_head.txt"
+sudo -u criptobot git -C "$REPO" rev-parse HEAD > "$BK/repo_head.txt"
 chmod 600 "$BK"/*
 echo "   $BK"
 
 step "2/9 Свіжий код сайту"
 sudo -u criptobot git -C "$REPO" fetch -q origin main
 sudo -u criptobot git -C "$REPO" reset -q --hard origin/main
-echo "   $(git -C "$REPO" log -1 --format='%h %s' | cut -c1-90)"
+echo "   $(sudo -u criptobot git -C "$REPO" log -1 --format='%h %s' | cut -c1-90)"
 
 step "3/9 Пакети (GoAccess, Docker Compose)"
 export DEBIAN_FRONTEND=noninteractive

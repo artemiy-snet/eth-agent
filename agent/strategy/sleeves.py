@@ -66,6 +66,15 @@ for _k in ("B", "B1", "Bm", "C", "Cm"):
         extra = [x for x in _o if not (_k in ("C", "Cm") and x.startswith("risk.max_dd_pct"))]   # C без kill switch
         SLEEVES[f"{_k}_{_s}"] = {**SLEEVES[_k], "label": SLEEVES[_k]["label"] + f" + правило {_s[1:]}",
                                 "set": SLEEVES[_k]["set"] + extra}
+# «Швидший» відскок для live-міні (запит Командира 2026-10-25: більше угод). Падіння для зведення / відскок від дна для купівлі
+# (у денних ATR): поточний Bm — 1,0 / 1,1–1,4. Гіпотези для бектесту (група fastbm), кожна ще й з правилом 21.
+FAST = {"ш1": ["v3.buy.limit_bot=-0.7", "v3.buy.action_bot=-0.1", "v3.buy.action_up=0.2"],    # 0,7 / 0,6–0,9
+        "ш2": ["v3.buy.limit_bot=-0.5", "v3.buy.action_bot=-0.1", "v3.buy.action_up=0.15"],   # 0,5 / 0,4–0,65
+        "ш3": ["v3.buy.action_bot=-0.4", "v3.buy.action_up=-0.1"]}                            # 1,0 / 0,6–0,9
+for _s, _o in FAST.items():
+    SLEEVES[f"Bm_{_s}"] = {**SLEEVES["Bm"], "label": SLEEVES["Bm"]["label"] + f" — швидший ({_s})", "set": SLEEVES["Bm"]["set"] + _o}
+    SLEEVES[f"Bm_{_s}_п21"] = {**SLEEVES["Bm"], "label": SLEEVES["Bm"]["label"] + f" — швидший ({_s}) + правило 21",
+                              "set": SLEEVES["Bm"]["set"] + _o + R25["п21"]}
 BACKTESTABLE = {k for k, v in SLEEVES.items() if v["strategy"] != "ai" and "pair" not in v}
 
 PRESETS: dict[str, dict[str, float]] = {
@@ -93,7 +102,7 @@ for _s in SW:
     PRESETS[f"live_міні_{_s}"] = {f"Bm_{_s}": 0.5, "Cm": 0.5}
 
 BASE_PRESETS = ["поточний", "обережний", "збалансований", "агресивний", "лише_режим"]
-_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE and "_зн" not in k and "_п" not in k]
+_BT = [k for k, w in PRESETS.items() if set(w) <= BACKTESTABLE and "_зн" not in k and "_п" not in k and "_ш" not in k]
 for _s in R25:
     PRESETS[f"обережний_{_s}"] = {f"B_{_s}": 1.0}
     PRESETS[f"збалансований_{_s}"] = {f"B1_{_s}": 0.7, "C": 0.3}
@@ -101,8 +110,12 @@ for _s in R25:
 for _s in ("п21", "п21м"):
     PRESETS[f"збалансований_{_s}_усі"] = {f"B1_{_s}": 0.7, f"C_{_s}": 0.3}
     PRESETS[f"live_міні_{_s}_усі"] = {f"Bm_{_s}": 0.5, f"Cm_{_s}": 0.5}
+for _s in FAST:
+    PRESETS[f"live_міні_{_s}"] = {f"Bm_{_s}": 0.5, "Cm": 0.5}
+    PRESETS[f"live_міні_{_s}_п21"] = {f"Bm_{_s}_п21": 0.5, "Cm": 0.5}
 _SWG = ["обережний", "збалансований", "live_міні"]
 GROUPS = {"sweep": _SWG + [f"{b}_{s}" for b in _SWG for s in SW],
+          "fastbm": ["live_міні", "live_міні_п21"] + [f"live_міні_{s}{x}" for s in FAST for x in ("", "_п21")],
           "rules25": _SWG + [k for k in PRESETS if any(k.startswith(b + "_п") for b in _SWG)],
           "all": [k for k in _BT if k != "live_міні"], "base": BASE_PRESETS, "macro": [k for k in _BT if k != "live_міні"]}
 

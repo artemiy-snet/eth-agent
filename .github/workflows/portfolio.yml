@@ -21,7 +21,7 @@ on:
       preset:
         description: "Портфель"
         type: choice
-        options: [base, macro, sweep, rules25, поточний, обережний, збалансований, агресивний, лише_режим]
+        options: [base, macro, sweep, rules25, fastbm, поточний, обережний, збалансований, агресивний, лише_режим]
         default: base
 
 permissions:

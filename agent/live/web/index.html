@@ -266,6 +266,7 @@ ul.clean{list-style:none;margin:0;padding:0;display:grid;gap:8px}
   <!-- НАЛАШТУВАННЯ -->
   <section class="tab" id="tab-st">
     <div class="grid" id="settings"></div>
+    <div class="card form" id="club" style="margin-top:12px"></div>
   </section>
 </main>
 
@@ -739,7 +740,19 @@ function renderEvents(){const tb=$("#eventsTbl");tb.textContent="";tb.append(el(
 document.querySelectorAll("#lvlSeg button").forEach(b=>b.addEventListener("click",()=>{S.lvl=b.dataset.l;document.querySelectorAll("#lvlSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderEvents()}));
 
 // ---------- settings ----------
-async function loadSettings(){try{S.settings=await api("/api/settings")}catch(e){return}renderSettings()}
+async function loadSettings(){loadClub();try{S.settings=await api("/api/settings")}catch(e){return}renderSettings()}
+// Клуб ботів на criptobot.store: одна кнопка, без командного рядка
+async function loadClub(){const box=$("#club");let s;try{s=await api("/api/club")}catch(e){return}box.textContent="";
+  const msg=el("p",{class:"h msg"});box.append(el("h2",{},"Клуб ботів"));
+  const send=async(body)=>{msg.textContent="…";const r=await post("/api/club",body).catch(()=>({ok:false,error:"агент не відповідає"}));
+    if(r.ok)loadClub();else{msg.textContent="✗ "+r.error;msg.className="h msg err"}};
+  if(s.joined){box.append(el("p",{},"Бот у клубі як ",el("b",{},s.nick),". Раз на добу він надсилає лише відсотки — без ключів і сум."),
+    el("div",{class:"keyrow"},el("a",{class:"btn",href:s.page,target:"_blank",rel:"noopener"},"Мій журнал"),
+      el("button",{class:"btn ghost",onclick:()=>{if(confirm("Вийти з клубу? Журнал сховається з сайту."))send({leave:true})}},"Вийти")),msg);return}
+  const inp=el("input",{placeholder:"нік латиницею, напр. kyiv_bot","aria-label":"Нік у клубі",maxlength:24,autocapitalize:"none"});
+  box.append(el("p",{},"Веди журнал свого бота поруч з іншими учасниками — для порівняння й розвитку. Бот раз на добу надсилає лише відсотки й кількість угод: жодних ключів, сум у $ чи ордерів. ",
+    el("a",{href:s.club,target:"_blank",rel:"noopener"},"Подивитися клуб")),
+    el("div",{class:"keyrow"},inp,el("button",{class:"btn",onclick:()=>send({nick:inp.value})},"Приєднатися")),msg)}
 function renderSettings(){const box=$("#settings");box.textContent="";const st=S.settings;if(!st)return;const pending={},secrets={};
   const sections=[["general","s_general"],["portfolio","s_portfolio"],["keys","s_keys"],["ai","s_ai"],["ai_trader","s_ai_trader"],["strategy","s_strategy"],["risk","s_risk"]];
   const msg=el("span",{class:"msg"});

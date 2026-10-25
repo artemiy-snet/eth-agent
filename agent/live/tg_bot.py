@@ -25,6 +25,7 @@ COMMANDS = [
     ("flatten", "продати все і зупинитись"),
     ("resume", "дозволити торгівлю знову"),
     ("post", "нотатка в журнал criptobot.store: /post текст"),
+    ("club", "клуб ботів: /club нік — приєднатися, /club вийти"),
     ("help", "список команд"),
 ]
 HELP = "Команди:\n" + "\n".join(f"/{c} — {d}" for c, d in COMMANDS)
@@ -172,11 +173,12 @@ def ai_text(home: Path) -> str:
 
 class TelegramControl:
     def __init__(self, token: str, chat_id: str, home: Path, overview, trades, journal=None,
-                 api: str = "https://api.telegram.org", candles=None, equity=None, site: str = "", site_token: str = ""):
+                 api: str = "https://api.telegram.org", candles=None, equity=None, site: str = "", site_token: str = "", club=None):
         self.token, self.chat, self.home = token.strip(), str(chat_id).strip(), home
         self.overview, self.trades, self.j, self.api = overview, trades, journal, api
         self.candles, self.equity = candles or (lambda tf: []), equity or (lambda: [])
         self.site, self.site_token = site.rstrip("/"), site_token.strip()
+        self.club = club
         self.offset = 0
         self.flatten_asked = 0.0
         self.stop_flag = threading.Event()
@@ -274,6 +276,8 @@ class TelegramControl:
             (self.home / "CLEAR_KILL").touch()
             self._log("зняття kill switch / STOP з Telegram")
             return "▶️ Торгівлю дозволено (STOP і kill switch знято протягом ~10 с)."
+        if cmd in ("club", "клуб") and self.club is not None:
+            return self.club((text or "").split()[1] if len((text or "").split()) > 1 else "")
         if cmd in ("help", "start", "допомога"):
             return HELP
         return "Не знаю такої команди.\n" + HELP
@@ -317,6 +321,25 @@ class TelegramControl:
         return t
 
 
+def club_text(agent, arg: str) -> str:
+    """/club — стан, /club нік — приєднатися, /club вийти — вийти (журнал лишається, але прихований)."""
+    from agent.live import club
+    try:
+        if arg.lower() in ("вийти", "leave"):
+            club.leave(agent)
+            return "Бот вийшов з клубу. Відправку зупинено."
+        if arg:
+            s = club.join(agent, arg)
+            return f"✅ Бот у клубі як {s['nick']}. Раз на добу він надсилатиме лише відсотки.\nТвій журнал: {s['page']}"
+    except ValueError as e:
+        return f"Не вийшло: {e}"
+    s = club.status(agent)
+    if s["joined"]:
+        return f"Бот у клубі як {s['nick']}: {s['page']}\nВийти: /club вийти"
+    return ("Клуб ботів — журнали учасників поруч, лише відсотки (без ключів і сум).\n"
+            f"Приєднатися: /club твій_нік (латиницею)\nПодивитися: {s['club']}")
+
+
 def start(agent, sec: dict, home: Path):
     """Запустити керування з Telegram, якщо задано токен і chat id."""
     if not (sec.get("TELEGRAM_TOKEN") and sec.get("TELEGRAM_CHAT_ID")):
@@ -327,6 +350,6 @@ def start(agent, sec: dict, home: Path):
     tc = TelegramControl(sec["TELEGRAM_TOKEN"], sec["TELEGRAM_CHAT_ID"], home,
                          overview=lambda: overview(agent), trades=lambda: api.trades(agent.j, 50), journal=agent.j,
                          candles=lambda tf: api.candles(agent, tf), equity=lambda: api.equity_history(home, mode),
-                         site=sec.get("SITE_URL", "https://criptobot.store"), site_token=sec.get("SITE_POST_TOKEN", ""))
+                         site=sec.get("SITE_URL", "https://criptobot.store"), site_token=sec.get("SITE_POST_TOKEN", ""), club=lambda arg: club_text(agent, arg))
     tc.start()
     return tc

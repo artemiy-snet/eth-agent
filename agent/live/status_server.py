@@ -201,6 +201,9 @@ def serve(agent, port: int, config_path=None) -> ThreadingHTTPServer:
                 return self._json({"history": api.ai_history(agent.j)})
             if path == "/api/news":
                 return self._json(news_cache.get())
+            if path == "/api/club":
+                from agent.live import club
+                return self._json(club.status(agent))
             if path == "/api/settings" and config_path:
                 return self._json(api.settings_view(Path(config_path), agent.home))
             return self._send(404, "not found")
@@ -235,6 +238,13 @@ def serve(agent, port: int, config_path=None) -> ThreadingHTTPServer:
                     agent.j.event("INFO", "settings", "налаштування змінено з панелі: "
                                   + ", ".join(res["saved"] + [k + " (ключ)" for k in res["secrets_saved"]]))
                 return self._json(res, 200 if res.get("ok") else 400)
+            if path == "/api/club":
+                from agent.live import club
+                try:
+                    res = club.leave(agent, body.get("delete_data") is True) if body.get("leave") else club.join(agent, body.get("nick", ""))
+                except ValueError as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True} | res)
             if path.startswith("/api/check/"):
                 return self._json(api.check(path.rsplit("/", 1)[-1], agent.home, mode, body.get("secrets")))
             return self._json({"ok": False, "error": "not found"}, 404)

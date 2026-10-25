@@ -100,14 +100,59 @@ def register(home: Path, nick: str, url: str = "https://criptobot.store", invite
             res = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         try:
-            raise SystemExit(json.loads(e.read().decode()).get("error", f"HTTP {e.code}"))
+            msg = json.loads(e.read().decode()).get("error", f"HTTP {e.code}")
         except ValueError:
-            raise SystemExit(f"HTTP {e.code}")
+            msg = f"HTTP {e.code}"
+        raise ValueError(msg) from None
+    except OSError as e:
+        raise ValueError(f"сайт недоступний: {e}") from None
+    _write_secrets(home, {"CLUB_TOKEN": res["token"], "CLUB_NICK": nick})
+    return url.rstrip("/") + res["page"]
+
+
+def _write_secrets(home: Path, kv: dict) -> None:
+    """Замінює/видаляє (значення None) рядки KEY= у secrets.env, решту не чіпає."""
     home.mkdir(parents=True, exist_ok=True)
     p = home / "secrets.env"
     old = p.read_text() if p.exists() else ""
-    lines = [ln for ln in old.splitlines() if not ln.strip().startswith("CLUB_TOKEN=")]
-    p.write_text("\n".join(lines + [f"CLUB_TOKEN={res['token']}"]) + "\n")
-    p.chmod(0o600)
-    return url.rstrip("/") + res["page"]
+    lines = [ln for ln in old.splitlines() if ln.split("=", 1)[0].strip() not in kv]
+    tmp = p.with_suffix(".tmp")                              # атомарно: обрив не зітре ключі Binance
+    tmp.write_text("\n".join(lines + [f"{k}={v}" for k, v in kv.items() if v is not None]) + "\n")
+    tmp.chmod(0o600)
+    tmp.replace(p)
+
+
+def status(owner) -> dict:
+    nick = getattr(owner, "club_nick", "")
+    url = getattr(owner, "club_url", "https://criptobot.store").rstrip("/")
+    return {"joined": bool(getattr(owner, "club_token", "")), "nick": nick, "page": f"{url}/u-{nick}.html" if nick else "",
+            "club": url + "/club.html"}
+
+
+def join(owner, nick: str) -> dict:
+    """Кнопка в панелі / команда /club: реєстрація і старт відправки без перезапуску агента."""
+    nick = (nick or "").strip().lower()
+    page = register(owner.home, nick, getattr(owner, "club_url", "https://criptobot.store"))
+    from agent.live.runner import read_secrets
+    owner.club_token, owner.club_nick = read_secrets(owner.home).get("CLUB_TOKEN", ""), nick
+    owner._next_club = 0
+    owner.j.event("INFO", "club", f"бот приєднався до клубу як {nick}")
+    return status(owner) | {"page": page}
+
+
+def leave(owner, delete_data: bool = False, opener=urllib.request.urlopen) -> dict:
+    """Вийти з клубу: токен відкликається на сервері й видаляється з secrets.env."""
+    token = getattr(owner, "club_token", "")
+    if token:
+        req = urllib.request.Request(getattr(owner, "club_url", "https://criptobot.store").rstrip("/") + "/api/club/leave",
+                                     data=json.dumps({"delete_data": bool(delete_data)}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
+        try:
+            opener(req, timeout=20).read()
+        except OSError as e:
+            raise ValueError(f"сайт недоступний: {e}") from None
+    _write_secrets(owner.home, {"CLUB_TOKEN": None, "CLUB_NICK": None})
+    owner.club_token, owner.club_nick = "", ""
+    owner.j.event("INFO", "club", "бот вийшов з клубу")
+    return status(owner)
 

@@ -328,7 +328,11 @@ def main(argv: list[str] | None = None) -> int:
 
 def _cmd_club_register(a) -> int:
     from agent.live.club import register
-    page = register(Path(a.home).expanduser(), a.nick.strip().lower(), a.url, a.invite)
+    try:
+        page = register(Path(a.home).expanduser(), a.nick.strip().lower(), a.url, a.invite)
+    except ValueError as e:
+        print(f"Не вийшло: {e}")
+        return 1
     print(f"Готово. CLUB_TOKEN записано в {a.home}/secrets.env. Перезапусти агента — раз на добу він надсилатиме відсотки.")
     print(f"Сторінка журналу: {page} (з'явиться після першого дня даних)")
     return 0

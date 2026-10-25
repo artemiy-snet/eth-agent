@@ -68,5 +68,32 @@ def test_register_writes_token_only_to_secrets(tmp_path, capsys):
         return io.BytesIO(json.dumps({"ok": True, "token": "club_new", "page": "/u-alpha.html"}).encode())
     page = cl.register(tmp_path, "alpha", "https://x.test", opener=opener)
     assert page == "https://x.test/u-alpha.html"
-    assert (tmp_path / "secrets.env").read_text() == "SITE_URL=x\nCLUB_TOKEN=club_new\n"
+    assert (tmp_path / "secrets.env").read_text() == "SITE_URL=x\nCLUB_TOKEN=club_new\nCLUB_NICK=alpha\n"
     assert "club_new" not in capsys.readouterr().out
+
+
+class FakeJ:
+    def __init__(self):
+        self.ev = []
+
+    def event(self, *a):
+        self.ev.append(a)
+
+
+def test_join_leave_without_restart(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from agent.live import tg_bot
+    (tmp_path / "secrets.env").write_text("BINANCE_API_KEY=k\n")
+    owner = SimpleNamespace(home=tmp_path, j=FakeJ(), club_url="https://x.test", club_token="", club_nick="")
+
+    def fake_register(home, nick, url):
+        cl._write_secrets(home, {"CLUB_TOKEN": "club_t", "CLUB_NICK": nick})
+        return url + f"/u-{nick}.html"
+    monkeypatch.setattr(cl, "register", fake_register)
+    assert "Приєднатися" in tg_bot.club_text(owner, "")
+    assert "kyiv_bot" in tg_bot.club_text(owner, "Kyiv_Bot")
+    assert owner.club_token == "club_t" and cl.status(owner)["joined"]
+    sent = []
+    cl.leave(owner, opener=lambda req, timeout: sent.append(req.full_url) or __import__("io").BytesIO(b"{}"))
+    assert sent == ["https://x.test/api/club/leave"] and not cl.status(owner)["joined"]
+    assert (tmp_path / "secrets.env").read_text() == "BINANCE_API_KEY=k\n"

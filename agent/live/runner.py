@@ -768,7 +768,7 @@ def read_secrets(home: Path) -> dict[str, str]:
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
     for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
-              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL", "SITE_POST_TOKEN", "SITE_URL", "CLUB_TOKEN"):
+              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL", "SITE_POST_TOKEN", "SITE_URL", "CLUB_TOKEN", "CLUB_NICK"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out
@@ -828,6 +828,7 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     obj.site_token = sec.get("SITE_POST_TOKEN", "") if live else ""
     obj.site_url = sec.get("SITE_URL", "https://criptobot.store")
     obj.club_token = sec.get("CLUB_TOKEN", "")              # клуб за бажанням: будь-який режим, лише відсотки
+    obj.club_nick = sec.get("CLUB_NICK", "")
     obj.club_url = obj.site_url
     if live:
         live_preflight(client, settings, journal, notifier)

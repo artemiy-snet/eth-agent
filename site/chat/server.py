@@ -260,8 +260,8 @@ def handle_diary(token: str, auth: str, data, data_dir: Path, now: float | None 
     return 200, {"ok": True}
 
 
-def make_stats():
-    """GET /api/stats для «Пульта» (site/chat/stats.py). Статті — з тих самих джерел, що й сайт."""
+def make_stats(club=None):
+    """GET /api/stats для «Пульта» (site/chat/stats.py). Статті — з тих самих джерел, що й сайт; club — зведення клубу."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import stats
@@ -269,10 +269,27 @@ def make_stats():
     def arts():
         import build
         return build.articles()
-    return stats.StatsAPI(articles_fn=arts)
+    return stats.StatsAPI(articles_fn=arts, club_fn=club.summary if club is not None else None)
 
 
-def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = "", stats_api=None):
+def make_club(data_dir: Path):
+    """Клуб ETH-Агента (site/club.py): реєстрація ботів і щоденні метрики учасників."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import club
+    return club.Club(data_dir)
+
+
+def read_json(handler, limit: int):
+    n = int(handler.headers.get("Content-Length") or 0)
+    if n <= 0 or n > limit:
+        return None, (413, {"error": "Завеликий запит."})
+    try:
+        return json.loads(handler.rfile.read(n)), None
+    except ValueError:
+        return None, (400, {"error": "Некоректний запит."})
+
+
+def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = "", stats_api=None, club=None):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -296,6 +313,19 @@ def make_handler(chat: Chat, allowed_hosts: set[str], post_token: str = "", stat
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
+            if self.path.startswith("/api/club/") and club is not None:
+                data, err = read_json(self, 4_000)
+                if err:
+                    return self._json(*err)
+                auth = self.headers.get("Authorization", "")
+                ip = (self.headers.get("X-Real-IP") or self.client_address[0]).strip()
+                if self.path == "/api/club/register":
+                    return self._json(*club.register(data, ip))
+                if self.path == "/api/club/metrics":
+                    return self._json(*club.submit(auth, data))
+                if self.path == "/api/club/leave":
+                    return self._json(*club.leave(auth, data))
+                return self._json(404, {"error": "not found"})
             if self.path == "/api/diary":
                 n = int(self.headers.get("Content-Length") or 0)
                 if n <= 0 or n > 300_000:
@@ -350,8 +380,9 @@ def main() -> None:
     hosts = {h.strip() for h in env("CHAT_HOSTS", "criptobot.store,www.criptobot.store").split(",") if h.strip()}
     port = int(env("CHAT_PORT", "8790"))
     print(f"чат слухає 127.0.0.1:{port}, моделі {models}, бюджет {limits.daily_usd} $/добу")
-    st = make_stats() if env("STATS_TOKEN", "") else None
-    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts, env("POST_TOKEN", ""), st)).serve_forever()
+    club = make_club(data)
+    st = make_stats(club) if env("STATS_TOKEN", "") else None
+    ThreadingHTTPServer(("127.0.0.1", port), make_handler(chat, hosts, env("POST_TOKEN", ""), st, club)).serve_forever()
 
 
 if __name__ == "__main__":

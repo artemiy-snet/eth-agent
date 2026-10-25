@@ -25,6 +25,7 @@ from agent.live.broker import ExchangeBroker, ExecResult, PaperBroker, base_asse
 from agent.live.journal import Journal, load_state, save_state
 from agent.live.notify import Notifier
 from agent.live.settings import LiveSettings
+from agent.live.club import club_feed
 from agent.live.site_feed import site_feed
 from agent.money import HUNDRED, ZERO, D
 from agent.risk.guard import RiskContext, RiskGuard
@@ -406,6 +407,7 @@ class Agent:
                 record_equity(self, [self], self.now())
                 heartbeat_ping(self, self.now())
                 site_feed(self, [self], self.now())
+                club_feed(self, [self], self.now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -741,6 +743,7 @@ class Portfolio:
                 record_equity(self, self.agents, self.agents[0].now())
                 heartbeat_ping(self, self.agents[0].now())
                 site_feed(self, self.agents, self.agents[0].now())
+                club_feed(self, self.agents, self.agents[0].now())
                 if (self.home / "CLEAR_KILL").exists():
                     (self.home / "CLEAR_KILL").unlink()
                     self.clear_kill()
@@ -765,7 +768,7 @@ def read_secrets(home: Path) -> dict[str, str]:
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.strip()
     for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_LIVE_API_KEY", "BINANCE_LIVE_API_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY",
-              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL", "SITE_POST_TOKEN", "SITE_URL"):
+              "ANTHROPIC_WORKSPACE_ID", "HEALTHCHECK_URL", "SITE_POST_TOKEN", "SITE_URL", "CLUB_TOKEN"):
         if os.environ.get(k):
             out[k] = os.environ[k]
     return out
@@ -824,6 +827,8 @@ def build(settings: LiveSettings, home: Path) -> "Agent | Portfolio":
     # щоденник на сайті — лише з реальної торгівлі (live), лише відсотки
     obj.site_token = sec.get("SITE_POST_TOKEN", "") if live else ""
     obj.site_url = sec.get("SITE_URL", "https://criptobot.store")
+    obj.club_token = sec.get("CLUB_TOKEN", "")              # клуб за бажанням: будь-який режим, лише відсотки
+    obj.club_url = obj.site_url
     if live:
         live_preflight(client, settings, journal, notifier)
         obj.bnb_fees = bnb_check(client, journal, notifier)

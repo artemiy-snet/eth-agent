@@ -34,6 +34,7 @@
 | `agent/live/tg_bot.py` | Telegram: /status /chart /equity /ai /trades /stop /flatten /resume /post |
 | `agent/live/panel_api.py`, `status_server.py`, `web/index.html` | Панель (vanilla JS, SVG, UA/EN) і її API |
 | `agent/live/site_feed.py` | Знімок для щоденника на сайті (лише відсотки) → POST `/api/diary` |
+| `agent/live/club.py`, `site/club.py` | Клуб: бот за бажанням раз на добу шле відсотки → `/api/club/metrics`; сторінки `club.html`, `u-<нік>.html`, `club-versions.html`; `eth-agent club-register --nick` |
 | `agent/analyst/shadow.py` | ШІ-аналітик (блок «що є нормою» проти хибних тривог — правити тут) |
 | `agent/backtest/` | `v3_engine.py` (той самий step на 1m-історії), `portfolio.py` (пресети, `run_all`), `grid.py` (сітка), `event_study.py` |
 | `agent/learning/walkforward.py` | Сітки гіпотез і walk-forward |

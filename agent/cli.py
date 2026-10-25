@@ -314,10 +314,24 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--mode", choices=["paper", "testnet"], default="paper")
     ar.add_argument("--home", default="~/.eth-agent")
 
+    cr = sub.add_parser("club-register", help="приєднати бота до клубу на criptobot.store (лише відсотки)")
+    cr.add_argument("--nick", required=True, help="3–24 символи: латиниця, цифри, _ або -")
+    cr.add_argument("--home", default="~/.eth-agent")
+    cr.add_argument("--url", default="https://criptobot.store")
+    cr.add_argument("--invite", default="")
+
     a = p.parse_args(argv)
-    return {"fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
+    return {"club-register": _cmd_club_register, "fetch": _cmd_fetch, "gaps": _cmd_gaps, "backtest": _cmd_backtest,
             "walkforward": _cmd_walkforward, "live": _cmd_live,
             "portfolio": _cmd_portfolio, "grid": _cmd_grid, "ai-review": _cmd_ai_review}[a.cmd](a)
+
+
+def _cmd_club_register(a) -> int:
+    from agent.live.club import register
+    page = register(Path(a.home).expanduser(), a.nick.strip().lower(), a.url, a.invite)
+    print(f"Готово. CLUB_TOKEN записано в {a.home}/secrets.env. Перезапусти агента — раз на добу він надсилатиме відсотки.")
+    print(f"Сторінка журналу: {page} (з'явиться після першого дня даних)")
+    return 0
 
 
 if __name__ == "__main__":

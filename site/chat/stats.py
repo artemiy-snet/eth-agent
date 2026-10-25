@@ -158,7 +158,7 @@ def collect(um: Umami, days: int, www: Path, goaccess_dir: Path, articles_fn, no
 class StatsAPI:
     """Авторизація, ліміт 30 запитів/хв на IP і кеш 60 с на кожне значення days."""
 
-    def __init__(self, env: dict | None = None, opener=urllib.request.urlopen, articles_fn=None):
+    def __init__(self, env: dict | None = None, opener=urllib.request.urlopen, articles_fn=None, club_fn=None):
         e = env if env is not None else dict(os.environ)
         self.token = e.get("STATS_TOKEN", "")
         self.um = Umami(e.get("UMAMI_URL", "http://127.0.0.1:3010"), e.get("UMAMI_USER", "admin"),
@@ -166,6 +166,7 @@ class StatsAPI:
         self.www = Path(e.get("WWW_DIR", "/var/www/criptobot"))
         self.ga = Path(e.get("GOACCESS_DIR", "/var/lib/criptobot/goaccess"))
         self.articles_fn = articles_fn
+        self.club_fn = club_fn
         self.hits: dict[str, deque] = defaultdict(deque)
         self.cache: dict[int, tuple[float, dict]] = {}
         self.lock = threading.Lock()
@@ -194,5 +195,10 @@ class StatsAPI:
             data = collect(self.um, days, self.www, self.ga, self.articles_fn, now)
         except Exception as e:  # noqa: BLE001
             return 502, {"error": f"Статистика тимчасово недоступна: {type(e).__name__}"}
+        if self.club_fn is not None:
+            try:
+                data["club"] = self.club_fn(now)
+            except Exception:  # noqa: BLE001 — клуб не має ламати статистику сайту
+                data["club"] = None
         self.cache[days] = (now, data)
         return 200, data

@@ -178,7 +178,7 @@ class TelegramControl:
         self.overview, self.trades, self.j, self.api = overview, trades, journal, api
         self.candles, self.equity = candles or (lambda tf: []), equity or (lambda: [])
         self.site, self.site_token = site.rstrip("/"), site_token.strip()
-        self.club = club
+        self.club, self.club_asked = club, None
         self.offset = 0
         self.flatten_asked = 0.0
         self.stop_flag = threading.Event()
@@ -277,7 +277,17 @@ class TelegramControl:
             self._log("зняття kill switch / STOP з Telegram")
             return "▶️ Торгівлю дозволено (STOP і kill switch знято протягом ~10 с)."
         if cmd in ("club", "клуб") and self.club is not None:
-            return self.club((text or "").split()[1] if len((text or "").split()) > 1 else "")
+            arg = (text or "").split()[1] if len((text or "").split()) > 1 else ""
+            if arg.lower() in ("так", "yes"):                    # підтвердження після попередження
+                nick, self.club_asked = self.club_asked, None
+                if not nick or now - nick[1] > CONFIRM_S:
+                    return "Немає активного запиту. Спершу /club твій_нік."
+                return self.club(nick[0])
+            if arg and arg.lower() not in ("вийти", "leave"):
+                from agent.live.club import WARNING
+                self.club_asked = (arg, now)
+                return f"{WARNING}\n\nЗгоден? Надішли /club так протягом {CONFIRM_S} с."
+            return self.club(arg)
         if cmd in ("help", "start", "допомога"):
             return HELP
         return "Не знаю такої команди.\n" + HELP

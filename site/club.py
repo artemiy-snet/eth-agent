@@ -26,6 +26,7 @@ NICK = re.compile(r"[a-z0-9_-]{3,24}")
 RESERVED = {"admin", "api", "club", "root", "www", "test", "eth-agent", "criptobot", "redakcia", "editor"}
 MIN_DAYS = 14                       # менше днів даних — учасник не в рейтингу
 MIN_GROUP = 5                       # версія/налаштування в аналітиці — лише від 5 ботів
+STEADY = {"days": 30, "max_dd": -5.0}  # знак «Стабільний»: 30+ днів, у плюсі за 30 днів, просадка не глибша за 5 %
 
 # схема метрик: поле → перевірка; інших полів не буває
 REQUIRED = {
@@ -214,6 +215,7 @@ class Club:
             row["trades_30"] = sum(m[d]["trades"] for d in days if d >= (today - timedelta(days=30)).isoformat())
             r, dd = row["ret_30"], row["dd_30"]
             row["stability"] = round(r / abs(dd), 2) if r is not None and dd not in (None, 0) else None
+            row["steady"] = len(days) >= STEADY["days"] and (r or 0) > 0 and dd is not None and dd >= STEADY["max_dd"]
             out.append(row)
         return out
 
@@ -228,7 +230,8 @@ class Club:
         return {"bots": len(ms), "active_7d": sum(1 for r in ms if r["last"] and r["last"] >= week),
                 "new_7d": sum(1 for r in ms if r["created"] >= now - 7 * 86_400),
                 "top": [{"nick": r["nick"], "return_30d_pct": r["ret_30"], "max_dd_pct": r["dd_30"], "mode": r["mode"]} for r in top],
-                "versions": versions(ranked)}
+                "versions": versions(ranked), "best_version": best_version(versions(ranked)),
+                "steady": [r["nick"] for r in ms if r["steady"]]}
 
 
 def window(m: dict, today: date, n: int) -> tuple[float | None, float | None]:
@@ -245,6 +248,15 @@ def window(m: dict, today: date, n: int) -> tuple[float | None, float | None]:
         peak = max(peak, v)
         dd = min(dd, (v / peak - 1) * 100)
     return ret, round(dd, 2)
+
+
+def best_version(vs: list[dict]) -> str | None:
+    """Нагорода «Найстабільніша версія»: серед груп від MIN_GROUP ботів — найкраща медіана дохідності на одиницю просадки,
+    лише якщо медіана в плюсі. Один бот із вдалим місяцем її не отримає."""
+    ok = [v for v in vs if v["median_return_30d_pct"] is not None and v["median_return_30d_pct"] > 0]
+    if not ok:
+        return None
+    return max(ok, key=lambda v: v["median_return_30d_pct"] / max(abs(v["median_dd_30d_pct"] or 0), 0.5))["version"]
 
 
 def versions(ranked: list[dict]) -> list[dict]:

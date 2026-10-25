@@ -314,18 +314,23 @@ def load_club():
     return club, club.Club(Path(os.environ.get("DATA_DIR", "/var/lib/criptobot")))
 
 
+STEADY_BADGE = ' <span title="30+ днів у плюсі, просадка не глибша за 5 %">🛡</span>'
+AWARDS_NOTE = ('<p class="small muted">🛡 <b>Стабільний</b> — бот 30+ днів, за останні 30 днів у плюсі й просадка не глибша за 5 %. '
+               '🏆 <b>Найстабільніша версія</b> — версія стратегії з найкращою медіаною «дохідність ÷ просадка» серед груп від 5 ботів.</p>')
+
+
 def club_rows(rows: list[dict]) -> str:
     if not rows:
         return '<p class="muted">Поки порожньо.</p>'
     body = "".join(
-        f'<tr><td><a href="u-{r["nick"]}.html">{esc(r["nick"])}</a></td><td>{pct(r["ret_7"])}</td><td>{pct(r["ret_30"])}</td>'
+        f'<tr><td><a href="u-{r["nick"]}.html">{esc(r["nick"])}</a>{STEADY_BADGE if r.get("steady") else ""}</td><td>{pct(r["ret_7"])}</td><td>{pct(r["ret_30"])}</td>'
         f'<td>{pct(r["ret_90"])}</td><td>{pct(r["dd_30"])}</td><td>{r["stability"] if r["stability"] is not None else "—"}</td>'
         f'<td>{r["trades_30"]}</td><td>{esc(r["version"] or "—")}</td><td>{r["days"]}</td></tr>' for r in rows)
     return ('<div class="prose"><table><thead><tr><th>Учасник</th><th>7 дн</th><th>30 дн</th><th>90 дн</th><th>Просадка 30 дн</th>'
             f'<th>Стабільність</th><th>Угод 30 дн</th><th>Версія</th><th>Днів даних</th></tr></thead><tbody>{body}</tbody></table></div>')
 
 
-def club_page(ms: list[dict], min_days: int) -> str:
+def club_page(ms: list[dict], min_days: int, best: str | None = None) -> str:
     ranked = [r for r in ms if r["days"] >= min_days and r["ret_30"] is not None]
     key = lambda r: -(r["stability"] if r["stability"] is not None else (r["ret_30"] or 0))
     live = sorted([r for r in ranked if r["mode"] == "live"], key=key)
@@ -336,13 +341,18 @@ def club_page(ms: list[dict], min_days: int) -> str:
             f'надсилає лише відсотки й лічильники. Рейтинг сортується за стабільністю — дохідність за 30 днів, поділена на просадку, '
             f'щоб на першому місці не опинялись найризикованіші налаштування. У рейтинг потрапляють учасники з {min_days}+ днями даних.</p>'
             f'<p><a href="{GH}#клуб">Як приєднатися</a> · <a href="club-versions.html">Аналітика версій</a></p></div>'
-            f'{CLUB_NOTE}<h2>Справжня торгівля</h2>{club_rows(live)}<h2>Тестова торгівля (paper / testnet)</h2>{club_rows(paper)}'
+            + (f'<p class="nums">🏆 Найстабільніша версія зараз: <b>{esc(best)}</b></p>' if best else "")
+            + f'{CLUB_NOTE}{AWARDS_NOTE}<h2>Справжня торгівля</h2>{club_rows(live)}<h2>Тестова торгівля (paper / testnet)</h2>{club_rows(paper)}'
             f'<h2>Нові учасники</h2><p>{newl}</p>')
     return inner("Клуб ETH-Агента", body, "Спільнота", "desk", f"Учасників: {len(ms)}. Журнали ботів поруч — для порівняння й розвитку.")
 
 
 def member_page(r: dict, m: dict) -> str:
     days = sorted(m)
+    if not days:
+        return inner(f"Журнал учасника {r['nick']}", '<p class="nums">Бот щойно приєднався. Перші дані з\'являться завтра: '
+                     'бот надсилає підсумок раз на добу, за вчорашній день.</p>' + CLUB_NOTE + '<p class="more"><a href="club.html">Увесь клуб</a></p>',
+                     "Клуб ETH-Агента", None, "Новий учасник.")
     eq = [[calendar.timegm(time.strptime(d, "%Y-%m-%d")) * 1000, m[d]["equity_index"], m[d].get("hold_index") or 100.0]
           for d in days]
     rows = "".join(f'<tr><td>{d}</td><td>{pct(m[d]["equity_change_pct"], 2)}</td><td>{m[d]["equity_index"]:.2f}</td>'
@@ -356,8 +366,8 @@ def member_page(r: dict, m: dict) -> str:
     return inner(f"Журнал учасника {r['nick']}", body, "Клуб ETH-Агента", None, f"Днів даних: {r['days']}.")
 
 
-def versions_page(vs: list[dict], min_group: int) -> str:
-    rows = "".join(f'<tr><td>{esc(v["version"])}</td><td>{v["bots"]}</td><td>{pct(v["median_return_30d_pct"]) if v["median_return_30d_pct"] is not None else "мало даних"}</td>'
+def versions_page(vs: list[dict], min_group: int, best: str | None = None) -> str:
+    rows = "".join(f'<tr><td>{esc(v["version"])}{" 🏆" if v["version"] == best else ""}</td><td>{v["bots"]}</td><td>{pct(v["median_return_30d_pct"]) if v["median_return_30d_pct"] is not None else "мало даних"}</td>'
                    f'<td>{pct(v["median_dd_30d_pct"]) if v["median_dd_30d_pct"] is not None else "—"}</td></tr>' for v in vs)
     table = ('<div class="prose"><table><thead><tr><th>Версія стратегії</th><th>Ботів</th><th>Медіана 30 дн</th><th>Медіана просадки</th>'
              f'</tr></thead><tbody>{rows}</tbody></table></div>') if rows else '<p class="muted">Поки замало учасників.</p>'
@@ -644,9 +654,11 @@ def build(out: Path) -> None:
         (out / "kb" / f"article-{a['slug']}.md").write_text(f"# {a['title']}\n\n{a['lead']}\n\n{a['body']}", encoding="utf-8")
     club_mod, cl = load_club()
     ms = cl.members()
-    w("club.html", page("club", "Клуб ETH-Агента", club_page(ms, club_mod.MIN_DAYS), "Журнали ботів учасників поруч.", og_img="desk"))
     ranked = [r for r in ms if r["days"] >= club_mod.MIN_DAYS and r["ret_30"] is not None]
-    w("club-versions.html", page("club-versions", "Аналітика версій", versions_page(club_mod.versions(ranked), club_mod.MIN_GROUP), og_img="desk"))
+    vs = club_mod.versions(ranked)
+    best = club_mod.best_version(vs)
+    w("club.html", page("club", "Клуб ETH-Агента", club_page(ms, club_mod.MIN_DAYS, best), "Журнали ботів учасників поруч.", og_img="desk"))
+    w("club-versions.html", page("club-versions", "Аналітика версій", versions_page(vs, club_mod.MIN_GROUP, best), og_img="desk"))
     for r in ms:
         w(f"u-{r['nick']}.html", page(f"u-{r['nick']}", f"Журнал учасника {r['nick']}", member_page(r, cl.metrics(r["nick"])),
                                       f"Бот учасника {r['nick']} у клубі ETH-Агента: лише відсотки.", og_img="desk"))

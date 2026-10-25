@@ -97,3 +97,20 @@ def test_join_leave_without_restart(tmp_path, monkeypatch):
     cl.leave(owner, opener=lambda req, timeout: sent.append(req.full_url) or __import__("io").BytesIO(b"{}"))
     assert sent == ["https://x.test/api/club/leave"] and not cl.status(owner)["joined"]
     assert (tmp_path / "secrets.env").read_text() == "BINANCE_API_KEY=k\n"
+
+
+def test_telegram_warns_before_join(tmp_path):
+    from agent.live.tg_bot import TelegramControl
+    got = []
+    tc = TelegramControl("t", "1", tmp_path, overview=dict, trades=list, club=lambda a: got.append(a) or "ok")
+    assert "публічний" in tc.handle("/club kyiv", now=100) and got == []
+    assert tc.handle("/club так", now=200) == "Немає активного запиту. Спершу /club твій_нік." and got == []
+    tc.handle("/club kyiv", now=300)
+    assert tc.handle("/club так", now=310) == "ok" and got == ["kyiv"]
+
+
+def test_awards():
+    vs = [{"version": "a", "bots": 5, "median_return_30d_pct": 4.0, "median_dd_30d_pct": -8.0},
+          {"version": "b", "bots": 6, "median_return_30d_pct": 2.0, "median_dd_30d_pct": -1.0},
+          {"version": "c", "bots": 1, "median_return_30d_pct": None, "median_dd_30d_pct": None}]
+    assert sc.best_version(vs) == "b" and sc.best_version(vs[2:]) is None

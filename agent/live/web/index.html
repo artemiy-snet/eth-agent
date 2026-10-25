@@ -752,7 +752,7 @@ async function loadClub(){const box=$("#club");let s;try{s=await api("/api/club"
   const inp=el("input",{placeholder:"нік латиницею, напр. kyiv_bot","aria-label":"Нік у клубі",maxlength:24,autocapitalize:"none"});
   box.append(el("p",{},"Веди журнал свого бота поруч з іншими учасниками — для порівняння й розвитку. Бот раз на добу надсилає лише відсотки й кількість угод: жодних ключів, сум у $ чи ордерів. ",
     el("a",{href:s.club,target:"_blank",rel:"noopener"},"Подивитися клуб")),
-    el("div",{class:"keyrow"},inp,el("button",{class:"btn",onclick:()=>send({nick:inp.value})},"Приєднатися")),msg)}
+    el("div",{class:"keyrow"},inp,el("button",{class:"btn",onclick:()=>{if(confirm(s.warning+"\n\nПриєднатися?"))send({nick:inp.value})}},"Приєднатися")),msg)}
 function renderSettings(){const box=$("#settings");box.textContent="";const st=S.settings;if(!st)return;const pending={},secrets={};
   const sections=[["general","s_general"],["portfolio","s_portfolio"],["keys","s_keys"],["ai","s_ai"],["ai_trader","s_ai_trader"],["strategy","s_strategy"],["risk","s_risk"]];
   const msg=el("span",{class:"msg"});

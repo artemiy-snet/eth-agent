@@ -203,7 +203,7 @@ def serve(agent, port: int, config_path=None) -> ThreadingHTTPServer:
                 return self._json(news_cache.get())
             if path == "/api/club":
                 from agent.live import club
-                return self._json(club.status(agent))
+                return self._json(club.status(agent) | {"warning": club.WARNING})
             if path == "/api/settings" and config_path:
                 return self._json(api.settings_view(Path(config_path), agent.home))
             return self._send(404, "not found")

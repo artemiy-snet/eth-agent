@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
+import shutil
 import sqlite3
 import threading
 import time
@@ -87,16 +89,47 @@ def _dec(x):
 
 def save_state(path: Path, state: v3.V3State, extra: dict) -> None:
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"bots": _enc(state.bots), "extra": _enc(extra)}, ensure_ascii=False, indent=1))
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"bots": _enc(state.bots), "extra": _enc(extra)}, ensure_ascii=False, indent=1))
+        f.flush()
+        os.fsync(f.fileno())                # інакше після вимкнення телефона файл буває порожнім
+    if path.exists() and path.stat().st_size > 0:
+        try:
+            shutil.copyfile(path, path.with_suffix(".bak"))   # попередній робочий стан — запасний
+        except OSError:
+            pass
     tmp.replace(path)                       # атомарно: не лишає напівзаписаного файла
 
 
-def load_state(path: Path) -> tuple[v3.V3State, dict] | None:
-    if not path.exists():
-        return None
-    raw = json.loads(path.read_text())
+def _parse_state(path: Path) -> tuple[v3.V3State, dict]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
     bots = []
     for b in _dec(raw["bots"]):
         b["phase"] = v3.Phase(b["phase"])
         bots.append(v3.BotV3(**b))
     return v3.V3State(bots=bots), _dec(raw.get("extra", {}))
+
+
+def load_state(path: Path) -> tuple[v3.V3State, dict] | None:
+    """Стан з диска. Зіпсований/порожній файл → запасна копія .bak; без неї — зрозуміла помилка (не стартуємо наосліп)."""
+    if not path.exists():
+        return None
+    try:
+        return _parse_state(path)
+    except (ValueError, KeyError, TypeError) as e:
+        bak = path.with_suffix(".bak")
+        broken = path.with_name(path.name + ".broken")
+        path.replace(broken)
+        if bak.exists():
+            try:
+                loaded = _parse_state(bak)
+            except (ValueError, KeyError, TypeError):
+                loaded = None
+            if loaded is not None:
+                shutil.copyfile(bak, path)
+                print(f"⚠️ {path.name} зіпсований ({e}) — відновлено із запасної копії {bak.name}")
+                return loaded
+        raise RuntimeError(
+            f"Файл стану {path.name} зіпсований ({e}), запасної копії немає. Його перейменовано на {broken.name}. "
+            f"Якщо позицій на біржі немає (лише USDT), просто запусти агента знову — він почне цей рукав з чистого стану."
+        ) from None

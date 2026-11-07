@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Golos Text,system-ui,sans-serif">
+<style>text{paint-order:stroke;stroke:#07121A;stroke-width:6px;stroke-linejoin:round}</style>
+<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050B10"/><stop offset="1" stop-color="#0C1E2A"/></linearGradient></defs>
+<rect width="900" height="460" rx="22" fill="url(#sky)"/>
+<g fill="#E8EEF2" opacity=".7"><circle cx="90" cy="50" r="1.4"/><circle cx="210" cy="90" r="1"/><circle cx="330" cy="40" r="1.2"/><circle cx="520" cy="70" r="1"/><circle cx="640" cy="35" r="1.4"/><circle cx="780" cy="85" r="1"/><circle cx="850" cy="45" r="1.2"/></g>
+<path d="M0 300 V230 h40 v-30 h30 v40 h25 v-60 h45 v50 h30 v-25 h40 v45 h20 v-80 h50 v70 h30 v-35 h35 v50 h25 v-55 h55 v65 h30 v-40 h40 v30 h25 v-70 h45 v60 h30 v-25 h40 v35 h25 v-50 h50 v55 h35 v-30 h45 V300 Z" fill="#02070A"/>
+<rect x="780" y="240" width="120" height="60" fill="#02070A"/><rect x="820" y="215" width="40" height="30" fill="#02070A"/>
+<g fill="#F0A04B" opacity=".55"><rect x="112" y="200" width="6" height="8"/><rect x="560" y="205" width="6" height="8"/></g>
+<g transform="translate(395 60)">
+<rect width="110" height="190" rx="16" fill="#0A1620" stroke="#93A7B2" stroke-width="3"/>
+<rect x="12" y="22" width="86" height="146" rx="6" fill="#030809"/>
+<rect x="30" y="72" width="44" height="22" rx="4" fill="none" stroke="#E0564B" stroke-width="3"/><rect x="74" y="78" width="5" height="10" rx="1" fill="#E0564B"/>
+<rect x="34" y="76" width="6" height="14" fill="#E0564B"/>
+<text x="55" y="125" fill="#E0564B" font-size="14" text-anchor="middle" font-weight="700">0 %</text>
+</g>
+<text x="450" y="290" fill="#E8EEF2" font-size="26" text-anchor="middle" font-weight="700">Агент офлайн: 90 год 42 хв</text>
+<line x1="80" x2="820" y1="360" y2="360" stroke="#1E3442" stroke-width="10" stroke-linecap="round"/>
+<line x1="150" x2="760" y1="360" y2="360" stroke="#E0564B" stroke-width="10" stroke-dasharray="14 8"/>
+<line x1="80" x2="150" y1="360" y2="360" stroke="#21C48A" stroke-width="10" stroke-linecap="round"/>
+<line x1="760" x2="820" y1="360" y2="360" stroke="#21C48A" stroke-width="10" stroke-linecap="round"/>
+<circle cx="150" cy="360" r="9" fill="#E0564B"/><circle cx="760" cy="360" r="9" fill="#21C48A"/>
+<text x="150" y="395" fill="#E0564B" font-size="15" text-anchor="middle">03.11 23:14 — немає світла</text>
+<text x="760" y="395" fill="#21C48A" font-size="15" text-anchor="middle">07.11 17:56 — знову в строю</text>
+<text x="455" y="345" fill="#93A7B2" font-size="14" text-anchor="middle">блекаут після обстрілів · без позицій, кошти в USDT</text>
+<text x="450" y="435" fill="#93A7B2" font-size="13" text-anchor="middle">ETH-Агент · criptobot.store</text>
+</svg>

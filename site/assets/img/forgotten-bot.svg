@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Golos Text,system-ui,sans-serif">
+<style>text{paint-order:stroke;stroke:#07121A;stroke-width:6px;stroke-linejoin:round}</style>
+<rect width="900" height="460" rx="22" fill="#07121A"/>
+<text x="70" y="36" fill="#E8EEF2" font-size="20" font-weight="700">Забутий бот проти «просто тримати ETH» · індекс, старт 15.10 = 100</text>
+<line x1="70" x2="750" y1="60" y2="60" stroke="#1E3442" stroke-dasharray="6 6"/>
+<text x="60" y="65" fill="#93A7B2" font-size="13" text-anchor="end">100</text>
+<line x1="70" x2="750" y1="142" y2="142" stroke="#1E3442" stroke-dasharray="2 6"/>
+<text x="60" y="148" fill="#93A7B2" font-size="13" text-anchor="end">90</text>
+<line x1="70" x2="750" y1="225" y2="225" stroke="#1E3442" stroke-dasharray="2 6"/>
+<text x="60" y="230" fill="#93A7B2" font-size="13" text-anchor="end">80</text>
+<line x1="70" x2="750" y1="308" y2="308" stroke="#1E3442" stroke-dasharray="2 6"/>
+<text x="60" y="312" fill="#93A7B2" font-size="13" text-anchor="end">70</text>
+<line x1="70" x2="750" y1="390" y2="390" stroke="#1E3442" stroke-dasharray="2 6"/>
+<text x="60" y="395" fill="#93A7B2" font-size="13" text-anchor="end">60</text>
+<rect x="132" y="60" width="62" height="330" fill="#E0564B" opacity=".12"/>
+<text x="163" y="380" fill="#E0564B" font-size="12" text-anchor="middle">блекаут</text>
+<polyline points="70,134 132,136 194,132 255,193 317,192 379,236 441,309 503,273 565,283 626,307 688,367 750,304" fill="none" stroke="#F0A04B" stroke-width="3" stroke-linejoin="round"/>
+<line x1="70" x2="750" y1="96" y2="96" stroke="#62D2FF" stroke-width="4"/>
+<text x="760" y="101" fill="#62D2FF" font-size="16" font-weight="700">бот ≈ −4 %</text>
+<text x="760" y="309" fill="#F0A04B" font-size="16" font-weight="700">ETH ≈ −30 %</text>
+<text x="441" y="331" fill="#F0A04B" font-size="12" text-anchor="middle">1 715</text>
+<text x="688" y="389" fill="#F0A04B" font-size="12" text-anchor="middle">дно ~1 540</text>
+<text x="70" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">30.10</text>
+<text x="194" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">07.11</text>
+<text x="317" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">11.11</text>
+<text x="441" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">15.11</text>
+<text x="565" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">19.11</text>
+<text x="688" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">21.11</text>
+<text x="750" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">23.11</text>
+<text x="70" y="446" fill="#93A7B2" font-size="12">30.10 бот продав ETH і пішов у долари · ціни ETH — з нічних випусків журналу · criptobot.store</text>
+</svg>

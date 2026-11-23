@@ -114,3 +114,10 @@ def test_awards():
           {"version": "b", "bots": 6, "median_return_30d_pct": 2.0, "median_dd_30d_pct": -1.0},
           {"version": "c", "bots": 1, "median_return_30d_pct": None, "median_dd_30d_pct": None}]
     assert sc.best_version(vs) == "b" and sc.best_version(vs[2:]) is None
+
+
+def test_settings_hash_with_real_sleeves():
+    from agent.live import club as cl2
+    from agent.live.settings import Sleeve
+    s = Sleeve(name="Cm", strategy="trend", params=None, risk=None, features=None, pair="ETHUSDT")
+    assert len(cl2.settings_hash([s])) == 8

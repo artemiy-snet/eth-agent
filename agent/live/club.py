@@ -37,7 +37,7 @@ def settings_hash(sleeves) -> str:
     for s in sleeves or ():
         p = dataclasses.asdict(s.params) if dataclasses.is_dataclass(s.params) else {}
         p = {k: str(v) for k, v in p.items() if "budget" not in k and "capital" not in k}
-        parts.append([s.name, s.kind, s.pair, sorted(p.items())])
+        parts.append([s.name, getattr(s, "strategy", ""), s.pair, sorted(p.items())])
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()[:8]
 
 

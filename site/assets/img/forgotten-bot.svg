@@ -14,12 +14,14 @@
 <text x="60" y="395" fill="#93A7B2" font-size="13" text-anchor="end">60</text>
 <rect x="132" y="60" width="62" height="330" fill="#E0564B" opacity=".12"/>
 <text x="163" y="380" fill="#E0564B" font-size="12" text-anchor="middle">блекаут</text>
-<polyline points="70,134 132,136 194,132 255,193 317,192 379,236 441,309 503,273 565,283 626,307 688,367 750,304" fill="none" stroke="#F0A04B" stroke-width="3" stroke-linejoin="round"/>
+<rect x="255" y="60" width="495" height="330" fill="#E0564B" opacity=".08"/>
+<text x="503" y="380" fill="#E0564B" font-size="12" text-anchor="middle">офлайн 347 год (09.11 → 23.11)</text>
+<polyline points="70,114 132,115 194,111 255,174 317,173 379,219 441,293 503,256 565,267 626,291 688,353 750,284" fill="none" stroke="#F0A04B" stroke-width="3" stroke-linejoin="round"/>
 <line x1="70" x2="750" y1="96" y2="96" stroke="#62D2FF" stroke-width="4"/>
 <text x="760" y="101" fill="#62D2FF" font-size="16" font-weight="700">бот ≈ −4 %</text>
-<text x="760" y="309" fill="#F0A04B" font-size="16" font-weight="700">ETH ≈ −30 %</text>
-<text x="441" y="331" fill="#F0A04B" font-size="12" text-anchor="middle">1 715</text>
-<text x="688" y="389" fill="#F0A04B" font-size="12" text-anchor="middle">дно ~1 540</text>
+<text x="760" y="289" fill="#F0A04B" font-size="16" font-weight="700">ETH −27 %</text>
+<text x="441" y="315" fill="#F0A04B" font-size="12" text-anchor="middle">1 715</text>
+<text x="688" y="375" fill="#F0A04B" font-size="12" text-anchor="middle">дно ~1 540</text>
 <text x="70" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">30.10</text>
 <text x="194" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">07.11</text>
 <text x="317" y="414" fill="#93A7B2" font-size="12" text-anchor="middle">11.11</text>
